@@ -1,7 +1,7 @@
 {- |
 Module      :  eun.hs 
 Description :  Progam to calcualte Edge Union Network ala Miyagi and Wheeler 2019
-               input graphviz dot files
+               input graphviz dot files and newick
 Copyright   :  (c) 2020 Ward C. Wheeler, Division of Invertebrate Zoology, AMNH. All rights reserved.
 License     :  
 
@@ -33,6 +33,10 @@ Maintainer  :  Ward Wheeler <wheeler@amnh.org>
 Stability   :  unstable
 Portability :  portable (I hope)
 
+Todo:
+  Add Adams consensus
+  In/Output enewick?
+
 -}
 
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -59,6 +63,7 @@ import Control.DeepSeq
 import qualified Data.BitVector as BV
 import Data.Monoid
 import Data.Char
+import qualified Adams as A
 -- import Data.Typeable
 
 -- import Debug.Trace
@@ -865,7 +870,6 @@ main =
 
 
     -- Create strict consensus
-    -- let intersectionBVs = foldl' intersect (fmap snd $ G.labNodes $ head processedGraphs) (fmap (fmap snd) $ fmap G.labNodes $ tail processedGraphs)
     let intersectionBVs = foldl1' intersect (fmap (fmap snd . G.labNodes) processedGraphs)
     let numberList = [0..(length intersectionBVs - 1)]
     let intersectionNodes = zip numberList intersectionBVs
@@ -874,6 +878,12 @@ main =
     let strictConsensusGraph = makeEUN intersectionNodes intersectionEdges
     let labelledConsensusGraph = addGraphLabels strictConsensusGraph totallLeafSet
     let strictConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledConsensusGraph
+
+    -- Creat Adams II consensus
+    let adamsIIBV = A.makeAdamsII processedGraphs
+    let labelledAdamsII = addGraphLabels adamsIIBV totallLeafSet
+    let adamsIIInfo = "There are " ++ show (length $ G.nodes labelledAdamsII) ++ " nodes present in Adams II consensus"
+    let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledAdamsII
 
 
     -- Create thresholdMajority rule Consensus and dot string
@@ -886,7 +896,7 @@ main =
 
     -- Create threshold EUN and dot string (union nodes from regular EUN above)
     -- need to add filter to remove HTU degreee < 2 
-    -- need to add secopnd pass EUN after adding HTU->Leaf edges
+    -- need to add second pass EUN after adding HTU->Leaf edges
     let allEdges = addAndReIndexEdges "all" unionNodes (concatMap G.labEdges (tail processedGraphs)) (G.labEdges $ head processedGraphs)
     let thresholdEUNEdges = getThresholdEdges threshold (length processedGraphs) allEdges
     let thresholdEUNGraph' = makeEUN unionNodes thresholdEUNEdges
@@ -899,15 +909,15 @@ main =
     -- Create EUN Dot file 
     let thresholdEUNOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams thresholdLabelledEUNGraph -- eunGraph
 
-
     -- Output Dot file
     if method == "eun" then
         if threshold == 0 then  do {hPutStrLn stderr eunInfo; putStrLn eunOutDotString}
         else do {hPutStrLn stderr thresholdEUNInfo; putStrLn thresholdEUNOutDotString}
-    else
+    else if method == "adams" then do {hPutStrLn stderr adamsIIInfo; putStrLn adamsIIOutDotString}
+    else if method == "strict" then
         if threshold == 100 then do {hPutStrLn stderr strictConInfo; putStrLn strictConsensusOutDotString}
         else do {hPutStrLn stderr thresholdConInfo; putStrLn thresholdConsensusOutDotString}
-
+    else error ("Graph combination method " ++ method ++ " is not implemented")
     hPutStrLn stderr "Done"
 
 
