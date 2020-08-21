@@ -1,7 +1,7 @@
 {- |
 Module      :  PhyloParsers.hs 
 Description :  module witb parseing functios for commonly used phylogentic files
-				graphs parsed to fgl types.
+                graphs parsed to fgl types.
 Copyright   :  (c) 2020 Ward C. Wheeler, Division of Invertebrate Zoology, AMNH. All rights reserved.
 License     :  
 
@@ -35,33 +35,109 @@ Portability :  portable (I hope)
 
 -}
 
-module PhyloParse () where
+{-- to do
+    Add fgl <-> Dot
+    Add in Fastc
+    TNT later (or simple for now) 
+--}
+
+{- 
+
+Forest Extended Newick defined here as a series of ENewick representations
+within '<' ans '>'. Nodes can be shared among consituent ENewick representations
+(';' from enewick itself, just for illustration, not doubled)
+
+<EN1;EN2>
+
+ExtendedNewick from Cardona et al. 2008.  BMC Bioinformatics 2008:9:532
+
+    The labels and comments are as in Olsen Newick formalization below,
+    other elements as in Cardona et all ENewick.
+
+Gary Olsen's Interpretation of the "Newick's 8:45" Tree Format Standard
+https://evolution.genetics.washington.edu/phylip/newick_doc.html
+
+Conventions:
+   Items in { } may appear zero or more times.
+   Items in [ ] are optional, they may appear once or not at all.
+   All other punctuation marks (colon, semicolon, parentheses, comma and
+         single quote) are required parts of the format.
+
+              tree ==> descendant_list [ root_label ] [ : branch_length ] ;
+
+   descendant_list ==> ( subtree { , subtree } )
+
+           subtree ==> descendant_list [internal_node_label] [: branch_length]
+                   ==> leaf_label [: branch_length]
+
+            root_label ==> label
+   internal_node_label ==> label
+            leaf_label ==> label
+
+                 label ==> unquoted_label
+                       ==> quoted_label
+
+        unquoted_label ==> string_of_printing_characters
+          quoted_label ==> ' string_of_printing_characters '
+
+         branch_length ==> signed_number
+                       ==> unsigned_number
+
+Notes:
+   Unquoted labels may not contain blanks, parentheses, square brackets,
+        single_quotes, colons, semicolons, or commas.
+   Underscore characters in unquoted labels are converted to blanks.
+   Single quote characters in a quoted label are represented by two single
+        quotes.
+   Blanks or tabs may appear anywhere except within unquoted labels or
+        branch_lengths.
+   Newlines may appear anywhere except within labels or branch_lengths.
+   Comments are enclosed in square brackets and may appear anywhere
+        newlines are permitted.
+
+Other notes:
+   PAUP (David Swofford) allows nesting of comments.
+   TreeAlign (Jotun Hein) writes a root node branch length (with a value of
+        0.0).
+   PHYLIP (Joseph Felsenstein) requires that an unrooted tree begin with a
+        trifurcation; it will not "uproot" a rooted tree.
+
+Example:
+   (((One:0.2,Two:0.3):0.3,(Three:0.5,Four:0.3):0.2):0.3,Five:0.7):0.0;
+
+           +-+ One
+        +--+
+        |  +--+ Two
+     +--+
+     |  | +----+ Three
+     |  +-+
+     |    +--+ Four
+     +
+     +------+ Five
+--}
+
+module PhyloParsers (getForestEnhancedNewickList) where
 
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.PatriciaTree as P
 import qualified Data.Text.Lazy as T
 
 
-let newickTextList = filter (not.T.null) $ T.split (==';') $ removeNewickComments (T.concat newickFileTexts)
-    -- hPutStrLn stderr $ show newickTextList
-let newickGraphList = fmap (newickToGraph [] [] (-1, "") . (:[])) newickTextList
-
-
 {--  
-	Using Text as ouput for non-standard ascii charcaters (accents, umlautes etc)
+    Using Text as ouput for non-standard ascii charcaters (accents, umlautes etc)
 --}
 
 
 -- | getForestEnhancedNewickList takes String file contents and returns a list 
 -- of fgl graphs with Text labels for nodes and edgesor error if not ForestEnhancedNewick or Newick formats.
-getForestEnhancedNewickList :: String -> [P.Gr T.Text T.Text]
+getForestEnhancedNewickList :: String -> [P.Gr T.Text Double]
 getForestEnhancedNewickList fleString = 
-	if null fleString then error "Empty file string input in getForestEnhancedNewickList"
-	else 
-		let fileText = T.pack getForestEnhancedNewickList
-			feNewickList = divideGraphText getForestEnhancedNewickList
-		in
-		fmap text2FGLGraph feNewickList
+    if null fleString then error "Empty file string input in getForestEnhancedNewickList"
+    else 
+        let fileText = T.pack fleString
+            feNewickList = divideGraphText fileText
+        in
+        fmap text2FGLGraph feNewickList
 
 -- | divideGraphText splits multiple Text representations of graphs (Newick styles)
 -- and returns a list if Text graph descriptions
@@ -70,9 +146,21 @@ getForestEnhancedNewickList fleString =
 -- removes comments
 divideGraphText :: T.Text -> [T.Text]
 divideGraphText inText =
-	if T.null inText then []
-	else 
-		[]
+    if T.null inText then []
+    else 
+        let firstChar = T.head inText
+        in
+        if firstChar == '<' then 
+            let firstPart = T.snoc (T.takeWhile (/= '>') inText) '>'
+                restPart = T.tail $ T.dropWhile (/= '>') inText
+            in
+            (removeNewickComments firstPart) : divideGraphText restPart
+        else if firstChar == '(' then 
+            let firstPart = T.snoc ((T.takeWhile (/= ';')) inText) ';'
+                restPart = T.tail $ (T.dropWhile (/= ';')) inText
+            in
+            (removeNewickComments firstPart) : divideGraphText restPart
+        else error "First character in graph representation is not either < or ;"
 
 -- | removeBranchLengths from Text group
 removeBranchLengths :: T.Text -> T.Text
@@ -81,7 +169,7 @@ removeBranchLengths inName
   | T.last inName == ')' = inName
   | not (T.any (==':') inName) = inName
   | otherwise = T.reverse $ T.tail $ T.dropWhile (/=':') $ T.reverse inName
-    -- )
+   
 
 -- | removeNewickComments take string and removes all "[...]"
 removeNewickComments :: T.Text -> T.Text
@@ -96,18 +184,23 @@ removeNewickComments inString
 
 -- | text2FGLGraph takes Text of newick (forest or enhanced or OG) and
 -- retns fgl graph representation
-text2FGLGraph :: T.Text -> P.Gr T.Text T.Text
+text2FGLGraph :: T.Text -> P.Gr T.Text Double
 text2FGLGraph inGraphText = 
-	if T.null inGraphText then error "Empty graph text in text2FGLGraph"
-	else 
-		let firstChar = T.head text2FGLGraph
-			lastChar = T.last text2FGLGraph
-		in
-		if firstChar == '<' && lastChar == '>' then getFENewick inGraphText
-		else if firstChar == '(' && lastChar == ';' then newickToGraph (T.init inGraphText)
-		else error ("Graph text not in ForestEnhancedNewick or (Enhanced)Newick format")
+    if T.null inGraphText then error "Empty graph text in text2FGLGraph"
+    else 
+        let firstChar = T.head inGraphText
+            lastChar = T.last inGraphText
+        in
+        if firstChar == '<' && lastChar == '>' then G.empty -- getFENewick inGraphText
+        else if firstChar == '(' && lastChar == ';' then G.empty -- newickToGraph (T.init inGraphText)
+        else error ("Graph text not in ForestEnhancedNewick or (Enhanced)Newick format")
 
 
+{--
+
+let newickTextList = filter (not.T.null) $ T.split (==';') $ removeNewickComments (T.concat newickFileTexts)
+    -- hPutStrLn stderr $ show newickTextList
+let newickGraphList = fmap (newickToGraph [] [] (-1, "") . (:[])) newickTextList
 
 
 -- | newickToGraph takes text of newick description (no terminal ';')
@@ -160,3 +253,4 @@ newickToGraph nodeList edgeList parentNode inNewickTextList =
           -- recurse the remainder
           newickToGraph ((thisNode : nodeList) ++ newNodes) ((thisEdge : edgeList) ++ newEdges) thisNode (nonLeafNodes ++ tail inNewickTextList)
           
+--}
