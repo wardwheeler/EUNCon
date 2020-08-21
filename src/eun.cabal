@@ -39,4 +39,4 @@ executable euncon
 
   default-language: Haskell2010
 
-  other-modules:  
+  other-modules: Adams 
