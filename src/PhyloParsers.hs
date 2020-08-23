@@ -273,12 +273,15 @@ getChildren inText =
 -- allows arbitrary in and out degree except for root and leaves
 eNewick2FGL :: [G.LNode T.Text] -> [G.LEdge Double] -> G.LNode T.Text -> [T.Text] -> P.Gr T.Text Double
 eNewick2FGL nodeList edgeList parentNode inTextList = 
-    let inText = head inTextList
-    in
-    if T.null inText then G.mkGraph nodeList (filter ((> (-1)).fst3) edgeList)
-     else if (T.head inText /= '(') || (T.last inText /= ';') then error ("Invalid Extended Newick representation," ++  
-      " must begin with \'(\'' and end with \';\' : " ++ (T.unpack inText))
+    if T.null inTextList then 
+      -- remove edge to root and make graph
+      G.mkGraph nodeList (filter ((> (-1)).fst3) edgeList)
     else 
+      let inText = head inTextList
+      in
+      else if (T.head inText /= '(') || (T.last inText /= ';') then error ("Invalid Extended Newick representation," ++  
+        " must begin with \'(\'' and end with \';\' : " ++ (T.unpack inText))
+      else 
         -- build tree keeping track of (#) nodes and edges
         let firstBody = T.init inText
             (subTree, nodeLabel, edgeWeight) = getBodyParts firstBody (length nodeList)
