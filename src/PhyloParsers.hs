@@ -136,11 +136,6 @@ import Data.Char (isSpace)
 fst3 :: (a,b,c) -> a
 fst3 (d,_,_) = d
 
--- | removes leading and trailing whitespce--inefficient if lots of spaces
-trimText :: T.Text -> T.Text
-trimText = f . f
-   where f = T.reverse . T.dropWhile isSpace
-
 -- | getForestEnhancedNewickList takes String file contents and returns a list 
 -- of fgl graphs with Text labels for nodes and edges or error if not ForestEnhancedNewick or Newick formats.
 --
@@ -206,7 +201,7 @@ text2FGLGraph inGraphText =
             lastChar = T.last inGraphText
         in
         if firstChar == '<' && lastChar == '>' then fENewick2FGL inGraphText -- getFENewick inGraphText
-        else if firstChar == '(' && lastChar == ';' then eNewick2FGL [] [] (-1, T.empty) [inGraphText] 
+        else if firstChar == '(' && lastChar == ';' then makeGraphFromPair $ eNewick2FGL [] [] (-1, T.empty) [inGraphText] 
         else error ("Graph text not in ForestEnhancedNewick or (Enhanced)Newick format")
 
 
@@ -219,7 +214,8 @@ fENewick2FGL inText =
     else 
       -- split eNewicks
       let eNewickTextList = splitForest inText
-          eNewickGraphList = fmap (eNewick2FGL [] [] (-1, T.empty) . (:[])) eNewickTextList
+      -- init to remove trailing ';' from eNewick
+          eNewickGraphList = fmap makeGraphFromPair $ fmap (eNewick2FGL [] [] (-1, T.empty) . (:[])) eNewickTextList
       in
       if length eNewickGraphList == 1 then head eNewickGraphList
       else
@@ -243,7 +239,21 @@ splitForest inText =
     in
     eNewickList
 
--- | getBodyParts takes a Text of a subTree and splits out th egropus description '(blah)', any node label
+-- | getBranchLength extracts branch length from Text label and puts in '1' if there is no
+-- bracnh length
+getBranchLength :: T.Text -> Double
+getBranchLength a = 
+  if (T.null a) then 1 
+  else (read (T.unpack a) :: Double)
+
+-- | getNodeLabel get--or makes--a label for a node
+getNodeLabel :: Int -> T.Text -> T.Text
+getNodeLabel b a = 
+  if (T.null a) then (T.append (T.pack $ show b) (T.pack "HTU")) 
+  else a
+            
+
+-- | getBodyParts takes a Text of a subTree and splits out the group description '(blah)', any node label
 -- and any branch length
 getBodyParts :: T.Text -> Int -> (T.Text, T.Text, Double)
 getBodyParts inRep nodeNumber = 
@@ -254,8 +264,6 @@ getBodyParts inRep nodeNumber =
           subGraphLabel = getNodeLabel nodeNumber $ T.takeWhile (/= ')') $ T.reverse $ T.takeWhile (/=':') inRep
       in
       (subGraphPart, subGraphLabel, branchLength)
-      where getBranchLength a = if (T.null a) then 0 else (read (T.unpack a) :: Double)
-            getNodeLabel b a = if (T.null a) then (T.append (T.pack $ show b) (T.pack "HTU")) else a
 
 -- | getChildren splits a subGraph Text '(blah, blah)' by commas, removing outer parens
 getChildren :: T.Text -> [T.Text]
@@ -268,28 +276,88 @@ getChildren inText =
     in
     guts
 
+-- | makeGraphFromPair takes pair of node list and edge list and returns Graph
+-- | filters to remove place holder node and edges creted during eNewick pass
+makeGraphFromPair :: [(G.LNode T.Text,G.LEdge Double)] -> P.Gr T.Text Double
+makeGraphFromPair pairList = 
+  if null pairLIst then G.empty
+  else 
+    let (nodeList, edgeList) = unZip pairList
+    in
+    G.mkGraph (filter ((> (-1)).fst) nodeList) (filter ((> (-1)).fst3) edgeList)
+
+-- | getLeafInfo takes Text of teminal (no ',') and parses to yeild
+-- either a single leaf label, edge, and edge weight, or two
+-- leaves with labels and costs if there is a network node as parent
+-- also searches for existing node labels to make correct edge and node 
+-- if no new node is needed to be crearted (since already exists due to
+-- network set dummy node with index -1 to be finltered later
+--NEED TO SCAN FOR EXISTING NODE
+getLeafInfo :: T.Text -> G.LNode T.Text -> [G.LNode T.Text] -> [(G.LNode T.Text,G.LEdge Double)]
+getLeafInfo leafText parentNode nodeList = 
+  if T.null leafText then error "Empty leaf text in getLeafInfo"
+  else 
+    -- simple leaf
+    if not (T.any (=='(') inText) then
+      let leafLabel = T,takeWhile (/= ':') leafText
+          edgeWeight = getBranchLength leafText
+          -- CHECK FOR EXISTING
+          thisNode = (length nodeList, leafLabel)
+          thisEdge = (fst parentNode, length nodeList, edgeWeight)
+      in
+      [(thisNode, thisEdge)]
+
+    --complex leaf label
+    --leaf and leafParent nodes
+    -- sublabelText:Double
+    else 
+      let leafParentEdgeWeight = getBranchLength leafText   --WRONG and need tio adjust if no edge weight with TakeWhile
+          subLabelText = T.takeWhile (/= ':') leafText
+          -- (leafLabel)X#H
+          leafLabelText = T.takeWhile (/= ')') $ T.tail leafText
+          -- check for existing
+          leafLabel = T.takeWhile (/= ':') leafLabelText
+          leafEdgeWeight = getBranchLength leafLabelText
+          -- CHECK FOR EXISTING
+          leafParentLabel = getNodeLabel (length nodeList) % T.tail $ T.dropWhile (/= ')') $ T.tail leafText
+          leafParentNode = (length nodeList, leafParentLabel)
+          leafNode = (1 + (length nodeList), leafLabel)
+          leafParentEdge = (fst parentNode, fst leafParentNode, leafParentEdgeWeight)
+          leafEdge = (fst leafParentNode, fst leafNode, leafEdgeWeight)
+      in
+      [(leafNode, leafEdge),(leafParentNode, leafParentEdge)]
+
 
 -- | eNewick2FGL takes a single Extended Newick (Text) string and returns FGL graph
 -- allows arbitrary in and out degree except for root and leaves
-eNewick2FGL :: [G.LNode T.Text] -> [G.LEdge Double] -> G.LNode T.Text -> [T.Text] -> P.Gr T.Text Double
+eNewick2FGL :: [G.LNode T.Text] -> [G.LEdge Double] -> G.LNode T.Text -> [T.Text] -> [(G.LNode T.Text,G.LEdge Double)]
 eNewick2FGL nodeList edgeList parentNode inTextList = 
-    if T.null inTextList then 
-      -- remove edge to root and make graph
-      G.mkGraph nodeList (filter ((> (-1)).fst3) edgeList)
+    if T.null inTextList then []
     else 
       let inText = head inTextList
-      in
-      else if (T.head inText /= '(') || (T.last inText /= ';') then error ("Invalid Extended Newick representation," ++  
-        " must begin with \'(\'' and end with \';\' : " ++ (T.unpack inText))
+      in  
+      -- see if initial call and check format
+      if null nodeList && ((T.head inText /= '(') || (T.last inText /= ')'))  then error ("Invalid Extended Newick component," ++  
+      " must begin with \'(\'' and end with \')\' : " ++ (T.unpack inText))
+      -- not first call and/or format OK
       else 
-        -- build tree keeping track of (#) nodes and edges
-        let firstBody = T.init inText
-            (subTree, nodeLabel, edgeWeight) = getBodyParts firstBody (length nodeList)
-            thisNode = (length nodeList, nodeLabel)
-            thisEdge = (fst parentNode, length nodeList, edgeWeight)
-            childGraphs = getChildren subTree
+        let inText = T.takeWhile (/= ';') $ T.head inTextList  -- remove trailing ';' if first (a bit wasteful)
         in
-        eNewick2FGL (thisNode : nodeList) (thisEdge : edgeList) thisNode childGraphs
+        -- is a single leaf
+        if not (T.any (==',') inText) then 
+          -- parse label ala Gary Olsen formalization
+          -- since could have reticulate label yeilding two edges and two nodes
+          -- Cardona et al 2008  Extended Newick
+          getLeafInfo inText parentNode nodeList
+        else 
+          -- is subtree
+          let firstBody = T.init inText
+             (subTree, nodeLabel, edgeWeight) = getBodyParts firstBody (length nodeList)
+             thisNode = (length nodeList, nodeLabel)
+             thisEdge = (fst parentNode, length nodeList, edgeWeight)
+             childTextList = getChildren subTree
+          in
+          (thisNode, thisEdge) : eNewick2FGL (thisNode : nodeList) (thisEdge : edgeList) thisNode childTextList
 
 
 -- | mergeFGLGraphs takes multiple graphs (with non-overlapping lef sets) and merges 
@@ -307,8 +375,8 @@ mergeNetNodesAndEdges inGraph = G.empty
 let newickTextList = filter (not.T.null) $ T.split (==';') $ removeNewickComments (T.concat newickFileTexts)
     -- hPutStrLn stderr $ show newickTextList
 let newickGraphList = fmap (newickToGraph [] [] (-1, "") . (:[])) newickTextList
-
-
+--}
+{--
 -- | newickToGraph takes text of newick description (no terminal ';')
 -- ther shoudl be no spaces in the text--filtered earlier.
 -- and recurives creates a nodes and edges in fgl library style
