@@ -64,6 +64,7 @@ import qualified Data.BitVector as BV
 import Data.Monoid
 import Data.Char
 import qualified Adams as A
+import qualified PhyloParsers as PhyP
 -- import Data.Typeable
 
 -- import Debug.Trace
@@ -72,6 +73,12 @@ import qualified Adams as A
 -- NFData instance for parmap/rdeepseq
 instance NFData BV.BV where
   rnf bv = BV.size bv `seq` BV.nat bv `seq` ()
+
+-- | 
+-- Map a function over a traversable structure in parallel
+-- Preferred over parMap which is limited to lists
+parmap :: Traversable t => Strategy b -> (a->b) -> t a -> t b
+parmap strat f = withStrategy (parTraversable strat).fmap f
 
 
 -- | functions for triples 
@@ -97,12 +104,6 @@ setOutDegreeOneBit outDegree nLeaves inBitVect =
   if outDegree == 1 then turnOnOutZeroBit inBitVect nLeaves
   else turnOffOutZeroBit inBitVect nLeaves
 
-
--- | 
--- Map a function over a traversable structure in parallel
--- Preferred over parMap which is limited to lists
-parmap :: Traversable t => Strategy b -> (a->b) -> t a -> t b
-parmap strat f = withStrategy (parTraversable strat).fmap f
 
 -- | writeFiles takes a stub and list of String
 -- and writes to files usinf stub ++ number as naming convention
@@ -466,7 +467,7 @@ getLeafLabelMatches localLeafList totNode =
     if snd totNode == leafString then (index, fst totNode)
     else getLeafLabelMatches (tail localLeafList) totNode
 
--- | reIndexNode takes an (Int, Int) map, labelled node, and returns a new labellbelledd node with new e,u vertices
+-- | reIndexEdge takes an (Int, Int) map, labelled edge, and returns a new labelled edge with new e,u vertices
 reIndexLEdge ::  Map.Map Int Int -> G.LEdge a -> G.LEdge String
 reIndexLEdge vertexMap inEdge =
   if Map.null vertexMap then error "Null vertex map"
