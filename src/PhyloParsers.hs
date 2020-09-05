@@ -125,6 +125,7 @@ module PhyloParsers (forestEnhancedNewickStringList2FGLList,
                     ) where
 
 import Data.Maybe
+import Data.List
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.PatriciaTree as P
 import qualified Data.Text.Lazy as T
@@ -561,13 +562,13 @@ removeDuplicateSubtreeText inRep netNodeTextList =
     let -- remove any edhge weight or may not match all occurences
         nodeText = T.takeWhile (/= ':') $ head netNodeTextList
         nodeLabel = T.reverse $ T.takeWhile (/= ')') $ T.reverse nodeText
-        textList = T.split nodeText inRep
+        textList = T.splitOn nodeText inRep
     in
     -- since root cannot be network neither first nor last pieces should be empty
-    if T.null (head textList) || T.null (last textList) then error ("Text representation of graph is incorrect with subtree:\n" ++ (T.pack nodeText) 
-      ++ " first or last in representation:\n " ++ (T.pack inRep))
-    else if length textList == 1 then error ("Text representation of graph is incorrect with subtree:\n" ++ (T.pack nodeText) 
-      ++ " not found in representation:\n " ++ (T.pack inRep))
+    if T.null (head textList) || T.null (last textList) then error ("Text representation of graph is incorrect with subtree:\n" ++ (T.unpack nodeText) 
+      ++ " first or last in representation:\n " ++ (T.unpack inRep))
+    else if length textList == 1 then error ("Text representation of graph is incorrect with subtree:\n" ++ (T.unpack nodeText) 
+      ++ " not found in representation:\n " ++ (T.unpack inRep))
     else if length textList == 2 then 
         trace ("Warning: Network subtree present only once--extraneous use of \'#\' perhaps--") 
         inRep
@@ -586,18 +587,19 @@ fgl2FEN writeEdgeWeight fglGraph =
   if G.isEmpty fglGraph then error "Empty graph to convert in fgl2FEN"
   else 
     -- get forest roots
-    let numRoots = getRoots inGraph (G.labNodes fglGraph)
+    let numRoots = getRoots fglGraph (G.labNodes fglGraph)
         fenTextList = fmap (component2Newick fglGraph writeEdgeWeight) (sortOn (subTreeSize 0) numRoots)
         wholeRep = T.concat $ fmap (T.append (T.singleton '\n')) $ fenTextList
         -- filter stuff for repeated subtrees
-        networkNodeList = filter ((>1).(G.indeg)) (G.nodes fglGraph)
-        labelList = fmap makeLabel $ fmap G.lab networkNodeList
+        --NEED TO ADD Indeg and zip or whatever
+        networkNodeList = filter ((>1).(G.indeg)) (G.nodes fglGraph) 
+        labelList = fmap makeLabel $ fmap (G.lab fglGraph) networkNodeList
         networkLabelledNodeList = zip networkNodeList labelList
         netNodeTreeTextList = fmap (component2Newick fglGraph writeEdgeWeight) networkLabelledNodeList
         wholeRep' = removeDuplicateSubtreeText wholeRep netNodeTreeTextList
     in
     if (length fenTextList == 1) then wholeRep' -- just a single tree/network
-    else (T.snoc '>' $ T.cons '<' wholeRep')
+    else T.snoc (T.cons '<' wholeRep') '>' 
     
 
 -- | fglList2ForestEnhancedNewickString takes FGL representation of forest and returns
@@ -607,7 +609,7 @@ fglList2ForestEnhancedNewickString inFGLList writeEdgeWeight =
   if null inFGLList then "\n"
   else 
     let forestTextList = fmap (T.append (T.singleton '\n')) $ parmap rdeepseq (fgl2FEN writeEdgeWeight) inFGLList
-        forestListString = T.pack $ T.concat forestTextList
+        forestListString = T.unpack $ T.concat forestTextList
     in
     forestListString
 
@@ -639,7 +641,7 @@ makeLabel mText = if mText == Nothing then T.empty else fromJust mText
 -- need to filter redundant subtrees later at the forest level (Can have shared node between rooted components)
 getNewick :: (Show a) => P.Gr T.Text a -> Bool -> [G.LEdge a] -> [T.Text]
 getNewick fglGraph writeEdgeWeight  inEdgeList =
-  if G.isEmpty fglGraph then T.empty
+  if G.isEmpty fglGraph then [T.empty]
   else if null inEdgeList then []
   else 
     let thisEdge@(parent, curNodeIndex, edgeLabel) = head inEdgeList
@@ -651,21 +653,21 @@ getNewick fglGraph writeEdgeWeight  inEdgeList =
       in
       if leafLabel == Nothing then error "Leaf without label in getNewick"
       else 
-        if writeEdgeWeight then T.concat [fromJust leafLabel, T.singleton ':', T.pack $ show edgeLabel]
-        else fromJust leafLabel
+        if writeEdgeWeight then [T.concat [fromJust leafLabel, T.singleton ':', T.pack $ show edgeLabel]]
+        else [fromJust leafLabel]
     -- not a leaf, recurse
     else 
       let nodeLabel = makeLabel $ G.lab fglGraph curNodeIndex
           middlePartList = getNewick fglGraph writeEdgeWeight (G.out fglGraph curNodeIndex)
       in 
       if length middlePartList == 1 then  -- outdegree 1
-        if not writeEdgeWeight then (T.concat [T.singleton '(', head middlePartList, T.singleton ')', fromJust nodeLabel]) : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
-        else (T.concat [T.singleton '(', head middlePartList, T.singleton ')', fromJust nodeLabel, T.singleton ':', T.pack $ show edgeLabel]) : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
+        if not writeEdgeWeight then (T.concat [T.singleton '(', head middlePartList, T.singleton ')', nodeLabel]) : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
+        else (T.concat [T.singleton '(', head middlePartList, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel]) : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
       else -- multiple children, outdegree > 1
         let middleText = T.intercalate (T.singleton ',') middlePartList
         in
-        if not writeEdgeWeight then (T.concat [T.singleton '(', middleText, T.singleton ')', fromJust nodeLabel])  : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
-        else (T.concat [T.singleton '(', middleText, T.singleton ')', fromJust nodeLabel, T.singleton ':', T.pack $ show edgeLabel]) : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
+        if not writeEdgeWeight then (T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel])  : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
+        else (T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel]) : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
       
 
       
