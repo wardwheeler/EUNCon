@@ -787,7 +787,7 @@ main =
     -- Process arguments
     --  csv file first line taxon/leaf names, subsequent lines are distances--must be symmetrical
     args <- getArgs
-    if length args < 4 then error "Need at least 4 arguments: method (eun or connsesus), a minimum percent representation (Integer), and at least two input GraphViz dot or Newick files"
+    if length args < 4 then error "Need at least 4 arguments: method (eun or consensus), a minimum percent representation (Integer), and at least two input GraphViz dot or Newick files"
     else hPutStrLn stderr ("\nReading " ++ show (length args - 2) ++ " input files Output to stdout")
     Prelude.mapM_ (hPutStrLn stderr) $ fmap show (zip [0..(length args-3)] (drop 2 args))
 
@@ -806,7 +806,18 @@ main =
     let newickTextList = filter (not.T.null) $ T.split (==';') $ removeNewickComments (T.concat newickFileTexts)
     -- hPutStrLn stderr $ show newickTextList
     let newickGraphList = fmap (newickToGraph [] [] (-1, "") . (:[])) newickTextList
-    -- Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph newickGraphList)
+    hPutStrLn stderr ("Newick inputs:\n")
+    Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph newickGraphList)
+
+    --New Newick parser
+    let newNewickGraphList = PhyP.forestEnhancedNewickStringList2FGLList (T.concat newickFileTexts)
+    hPutStrLn stderr ("New Newick inputs:\n")
+    Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph newNewickGraphList)
+    let outNewickList = PhyP.fglList2ForestEnhancedNewickString newNewickGraphList True
+    hPutStrLn stderr ("Back to Newick outputs:\n")
+    hPutStrLn stderr outNewickList
+    
+
 
     -- input dot files
     (dotGraphList :: [DotGraph G.Node]) <- mapM readDotFile dotArgs
