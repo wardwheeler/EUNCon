@@ -277,24 +277,29 @@ makeGraphFromPairList pairList =
 -- branch length--makes sure after last ')'
 getBranchLength :: T.Text -> Double
 getBranchLength inText = 
-  if (T.null inText) then error "Null text in getBranchLength"
+  trace ("Getting branch length of " ++ show inText) (
+  if T.null inText then error "Null text in getBranchLength"
   else 
-    let a =  T.reverse $ T.takeWhile (/= ':') $ T.takeWhile (/= ')') $ T.reverse inText
+    let a = T.dropWhile (/= ':') $ T.reverse $ T.takeWhile (/= ')') $ T.reverse inText
     in
     if T.null a then 1
-    else (read (T.unpack a) :: Double)
+    else if T.length a == 1 then error "Need branch length after \':\')" 
+    else (read (T.unpack $ T.tail a) :: Double)
+    )
 
 -- | getNodeLabel get--or makes--a label for a node
 -- after last ')' before any ':', without ',' after last ')'
 getNodeLabel :: Int -> T.Text -> T.Text
 getNodeLabel nodeNumber inText =
+  trace ("Getting node label of " ++ show inText) (
   if T.null inText then error "Null text in getNodeLabel" 
   else 
     let a = T.takeWhile (/= ':') $ T.reverse $ T.takeWhile (/= ')') $ T.reverse inText
     in
-    if (T.any (==',') a) then (T.append (T.pack $ show nodeNumber) (T.pack "HTU")) 
-    else if (T.null a) then (T.append (T.pack $ show nodeNumber) (T.pack "HTU")) 
+    if (T.any (==',') a) then (T.append (T.pack "HTU") (T.pack $ show nodeNumber) ) 
+    else if (T.null a) then (T.append (T.pack "HTU") (T.pack $ show nodeNumber)) 
     else a
+    )
             
 -- | getLeafInfo takes Text of teminal (no ',') and parses to yeild
 -- either a single leaf label, edge, and edge weight, or two
@@ -384,34 +389,99 @@ getBodyParts :: T.Text -> Int -> (T.Text, T.Text, Double)
 getBodyParts inRep nodeNumber = 
   if T.null inRep then error "No group to parse in getBodyParts"
   else 
+      --trace ("In body parts") (
       let subGraphPart =  T.reverse $ T.dropWhile (/= ')') $ T.reverse inRep
           branchLength =  getBranchLength inRep
           subGraphLabel = getNodeLabel nodeNumber inRep
       in
+      trace (show (subGraphPart, subGraphLabel, branchLength)) 
       (subGraphPart, subGraphLabel, branchLength)
+      --)
+
+-- | getParenBoundedGraph tkaes a Text String and returns  the first graph component 
+-- with balanced parens and remainder of Text
+getParenBoundedGraph :: Int -> Int -> T.Text -> T.Text -> (T.Text, T.Text)
+getParenBoundedGraph leftParenCounter rightParenCounter curText inText =
+  --trace ("GB " ++ show curText ++ " " ++ show inText) (
+  if T.null inText then (curText, inText)
+  else 
+    let firstChar = T.head inText
+    in
+    if firstChar == '(' then getParenBoundedGraph (leftParenCounter + 1) rightParenCounter (T.snoc curText firstChar) (T.tail inText)
+    else if firstChar /= ')' then getParenBoundedGraph leftParenCounter rightParenCounter (T.snoc curText firstChar) (T.tail inText)
+    else -- right paren
+      if rightParenCounter + 1 == leftParenCounter then -- closing matrched paren
+          let restOfComponent = T.takeWhile (/= ',') inText
+              remainderText = T.dropWhile (/= ',') inText
+          in
+          (curText `T.append` restOfComponent, remainderText)
+      else getParenBoundedGraph leftParenCounter (rightParenCounter + 1) (T.snoc curText firstChar) (T.tail inText)
+     -- )
+
+-- | getSubComponents takes a Text String and reurns 1 or more subcomponents of graph
+-- scenarios include leaf, leaf in parens, subgraph in parens
+getSubComponents :: T.Text -> [T.Text]
+getSubComponents inText = 
+  --trace ("gSC " ++ show inText) (
+  if T.null inText then []
+  else
+    if (T.head inText) == ',' then getSubComponents (T.tail inText) -- separator left over from previous run
+    else if (T.head inText) /= '(' then -- simple leaf (no net node labels) 
+      let subGraph = T.takeWhile (/= ',') inText
+          restGraph = T.dropWhile (/= ',') inText
+      in
+      subGraph : (getSubComponents restGraph)
+    else -- "regular" paren defined element
+      let (subGraph, restGraph) = getParenBoundedGraph 0 0 T.empty inText
+      in
+      subGraph : getSubComponents restGraph
+      --)
 
 -- | getChildren splits a subGraph Text '(blah, blah)' by commas, removing outer parens
 getChildren :: T.Text -> [T.Text]
 getChildren inText = 
+  --trace ("In gC") (
   if T.null inText then []
   else if (T.head inText /= '(') || (T.last inText /= ')') then error ("Invalid Extended Newick component," ++  
       " must begin with \'(\'' and end with \')\' : " ++ (T.unpack inText))
   else 
     -- modify for indegree 1 outdegree 1 and print warning.
-    let guts = filter (not.(T.null)) $ T.splitOn (T.singleton ',') $ T.init $ T.tail inText
+    -- let guts = filter (not.(T.null)) $ T.splitOn (T.singleton ',') $ T.init $ T.tail inText
+    let guts = T.init $ T.tail inText -- removes leading and training parens
+        subComponents = filter (not.(T.null)) $  getSubComponents guts
     in
-    guts
+    --trace ("SC " ++ show subComponents)
+    subComponents
+    --)
 
 -- | checkForExistingNode takes a node label and checs the node list for the first
 -- node with the same label and returns a Maybe node, else Nothing
 checkForExistingNode :: T.Text -> [G.LNode T.Text] -> Maybe (G.LNode T.Text)
-checkForExistingNode nodeLabel nodeList =
+checkForExistingNode nodeLabel nodeList = 
   if null nodeList then Nothing
   else 
     let matchList = filter ((==nodeLabel).snd) nodeList
     in
     if null matchList then Nothing
     else Just $ head matchList
+    
+-- | checkIfLeaf checks text to see if leaf.
+-- if the number of left parens is 1 and right parens 1 and no ',' then leaf
+-- if no left parens and no right paren then leaf
+-- then its a leaf
+-- either "bleh", "bleh:00", or "(bleh)label:00"
+checkIfLeaf :: T.Text -> Bool
+checkIfLeaf inText =
+  if T.null inText then error "Null text to check if leaf in checkIfLeaf"
+  else 
+    let leftParenCount = T.count (T.singleton '(') inText
+        rightParenCount = T.count (T.singleton ')') inText
+        commaCount = T.count (T.singleton ',') inText
+    in
+    if (leftParenCount == 0) && (rightParenCount == 0) && (commaCount == 0) then True
+    else if (leftParenCount == 0) && (rightParenCount == 0) && (commaCount > 0) then error ("Comma within leaf label" ++ show inText)
+    else if (leftParenCount == 1) && (rightParenCount == 1) && (commaCount == 0) then True
+    else False 
 
 -- | eNewick2FGL takes a single Extended Newick (Text) string and returns FGL graph
 -- allows arbitrary in and out degree except for root and leaves
@@ -427,16 +497,23 @@ eNewick2FGL nodeList edgeList parentNode inTextList =
       -- not first call and/or format OK
       else 
         let inText = T.takeWhile (/= ';') inTextFirst  -- remove trailing ';' if first (a bit wasteful--but intial check on format)
+            isLeaf = checkIfLeaf inText
         in
-        trace ("Parsing " ++ show inText)(
+        trace ("Parsing " ++ show inText ++ " " ++ show isLeaf)(
       -- is a single leaf
-        if not (T.any (==',') inText) then 
+      -- need better could be  series of indegree `1 outdegree 1 nodes to a single leaf with no ','
+      -- like (a(b(c(d))))
+        if isLeaf then 
           -- parse label ala Gary Olsen formalization
           -- since could have reticulate label yeilding two edges and two nodes
           -- Cardona et al 2008  Extended Newick
-          getLeafInfo inText parentNode nodeList
+          let newLeafList = getLeafInfo inText parentNode nodeList
+              newNodeList = fmap fst newLeafList
+              newEdgeList = fmap snd newLeafList
+          in
+          newLeafList ++ (eNewick2FGL (newNodeList ++ nodeList) (newEdgeList ++ edgeList) parentNode (tail inTextList))
         else 
-          -- is subtree
+          -- is subtree assumes start and end with parens '(blah)'
           let (subTree, nodeLabel, edgeWeight) = getBodyParts inText (length nodeList)
               thisNode = (length nodeList, nodeLabel)
               thisEdge = (fst parentNode, length nodeList, edgeWeight)
@@ -445,6 +522,7 @@ eNewick2FGL nodeList edgeList parentNode inTextList =
               --check for existing node
               existingNode = checkForExistingNode nodeLabel nodeList
           in
+          trace ("-> " ++ show subTree ++ " " ++ show childTextList ++ " node " ++ show thisNode ++ " edge " ++ show thisEdge) (
           if existingNode == Nothing then (thisNode, thisEdge) : eNewick2FGL (thisNode : nodeList) (thisEdge : edgeList) thisNode childTextList
           else 
             let newNode = fromJust existingNode
@@ -452,7 +530,7 @@ eNewick2FGL nodeList edgeList parentNode inTextList =
             in
           -- allows the filtering out redundant nodes (-1 index) later, keeps node list in good shape for index determination
           ((-1, snd newNode), newEdge) : eNewick2FGL nodeList (newEdge : edgeList) thisNode childTextList
-          )
+          ))
 
 -- | reindexNode takes an offset and adds to the node index
 -- returning new node
