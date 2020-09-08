@@ -523,13 +523,13 @@ eNewick2FGL nodeList edgeList parentNode inTextList =
               existingNode = checkForExistingNode nodeLabel nodeList
           in
           trace ("-> " ++ show subTree ++ " " ++ show childTextList ++ " node " ++ show thisNode ++ " edge " ++ show thisEdge) (
-          if existingNode == Nothing then (thisNode, thisEdge) : eNewick2FGL (thisNode : nodeList) (thisEdge : edgeList) thisNode childTextList
+          if existingNode == Nothing then (thisNode, thisEdge) : eNewick2FGL (thisNode : nodeList) (thisEdge : edgeList) thisNode (childTextList ++ (tail inTextList))
           else 
             let newNode = fromJust existingNode
                 newEdge = (fst parentNode, fst newNode, edgeWeight)
             in
           -- allows the filtering out redundant nodes (-1 index) later, keeps node list in good shape for index determination
-          ((-1, snd newNode), newEdge) : eNewick2FGL nodeList (newEdge : edgeList) thisNode childTextList
+          ((-1, snd newNode), newEdge) : eNewick2FGL nodeList (newEdge : edgeList) thisNode (childTextList ++ (tail inTextList))
           ))
 
 -- | reindexNode takes an offset and adds to the node index
