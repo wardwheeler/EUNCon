@@ -277,7 +277,7 @@ makeGraphFromPairList pairList =
 -- branch length--makes sure after last ')'
 getBranchLength :: T.Text -> Double
 getBranchLength inText = 
-  trace ("Getting branch length of " ++ show inText) (
+  --trace ("Getting branch length of " ++ show inText) (
   if T.null inText then error "Null text in getBranchLength"
   else 
     let a = T.dropWhile (/= ':') $ T.reverse $ T.takeWhile (/= ')') $ T.reverse inText
@@ -285,13 +285,13 @@ getBranchLength inText =
     if T.null a then 1
     else if T.length a == 1 then error "Need branch length after \':\')" 
     else (read (T.unpack $ T.tail a) :: Double)
-    )
+    --)
 
 -- | getNodeLabel get--or makes--a label for a node
 -- after last ')' before any ':', without ',' after last ')'
 getNodeLabel :: Int -> T.Text -> T.Text
 getNodeLabel nodeNumber inText =
-  trace ("Getting node label of " ++ show inText) (
+  --trace ("Getting node label of " ++ show inText) (
   if T.null inText then error "Null text in getNodeLabel" 
   else 
     let a = T.takeWhile (/= ':') $ T.reverse $ T.takeWhile (/= ')') $ T.reverse inText
@@ -299,7 +299,7 @@ getNodeLabel nodeNumber inText =
     if (T.any (==',') a) then (T.append (T.pack "HTU") (T.pack $ show nodeNumber) ) 
     else if (T.null a) then (T.append (T.pack "HTU") (T.pack $ show nodeNumber)) 
     else a
-    )
+    --)
             
 -- | getLeafInfo takes Text of teminal (no ',') and parses to yeild
 -- either a single leaf label, edge, and edge weight, or two
@@ -394,7 +394,7 @@ getBodyParts inRep nodeNumber =
           branchLength =  getBranchLength inRep
           subGraphLabel = getNodeLabel nodeNumber inRep
       in
-      trace (show (subGraphPart, subGraphLabel, branchLength)) 
+      --trace (show (subGraphPart, subGraphLabel, branchLength)) 
       (subGraphPart, subGraphLabel, branchLength)
       --)
 
@@ -490,16 +490,17 @@ eNewick2FGL nodeList edgeList parentNode inTextList =
     if null inTextList then []
     else 
       let inTextFirst = head inTextList
+          isRoot = null nodeList
       in  
       -- see if initial call and check format
-      if null nodeList && ((T.head inTextFirst /= '(') || (T.last inTextFirst /= ';'))  then error ("Invalid Extended Newick component," ++  
+      if isRoot && ((T.head inTextFirst /= '(') || (T.last inTextFirst /= ';'))  then error ("Invalid Extended Newick component," ++  
       " must begin with \'(\'' and end with \')\' : " ++ (T.unpack inTextFirst))
       -- not first call and/or format OK
       else 
-        let inText = T.takeWhile (/= ';') inTextFirst  -- remove trailing ';' if first (a bit wasteful--but intial check on format)
+        let inText = if isRoot then T.takeWhile (/= ';') inTextFirst else inTextFirst -- remove trailing ';' if first (a bit wasteful--but intial check on format)
             isLeaf = checkIfLeaf inText
         in
-        trace ("Parsing " ++ show inText ++ " " ++ show isLeaf)(
+        trace ("Parsing " ++ show inText ++ " from parent " ++ show parentNode ++ " " ++ show isLeaf)(
       -- is a single leaf
       -- need better could be  series of indegree `1 outdegree 1 nodes to a single leaf with no ','
       -- like (a(b(c(d))))
