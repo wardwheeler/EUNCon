@@ -227,7 +227,7 @@ text2FGLGraph inGraphText =
             lastChar = T.last inGraphText
         in
         if firstChar == '<' && lastChar == '>' then fENewick2FGL inGraphText -- getFENewick inGraphText
-        else if firstChar == '(' && lastChar == ';' then makeGraphFromPairList $ eNewick2FGL [] [] (-1, T.empty) [inGraphText] 
+        else if firstChar == '(' && lastChar == ';' then mergeNetNodesAndEdges $ makeGraphFromPairList $ eNewick2FGL [] []  [(inGraphText, (-1, T.empty))] 
         else error ("Graph text not in ForestEnhancedNewick or (Enhanced)Newick format")
 
 
@@ -240,8 +240,10 @@ fENewick2FGL inText =
     else 
       -- split eNewicks
       let eNewickTextList = splitForest inText
+          startNodeList = replicate (length eNewickTextList) (-1, T.empty)
+          textNodeList = zip eNewickTextList startNodeList
       -- init to remove trailing ';' from eNewick
-          eNewickGraphList = fmap makeGraphFromPairList $ fmap (eNewick2FGL [] [] (-1, T.empty) . (:[])) eNewickTextList
+          eNewickGraphList = fmap mergeNetNodesAndEdges $ fmap makeGraphFromPairList $ fmap (eNewick2FGL [] [] . (:[])) textNodeList
       in
       if length eNewickGraphList == 1 then head eNewickGraphList
       else
@@ -258,9 +260,10 @@ splitForest inText =
   else if (T.head inText /= '<') || (T.last inText /= '>') then error ("Invalid Forest Extended Newick representation," ++  
       " must begin with \'<\'' and end with \'>\' : " ++ (T.unpack inText))
   else 
-    let partsList = filter (not.(T.null)) $ T.splitOn (T.singleton ';') inText
-        eNewickList = fmap (T.append (T.singleton ';')) partsList
+    let partsList = filter (not.(T.null)) $ T.splitOn (T.singleton ';') (T.init $ T.tail inText)
+        eNewickList = fmap (`T.append` (T.singleton ';')) partsList
     in
+    trace ("split forest: " ++ show partsList ++ " -> " ++ show eNewickList)
     eNewickList
 
 -- | makeGraphFromPairList takes pair of node list and edge list and returns Graph
@@ -304,10 +307,7 @@ getNodeLabel nodeNumber inText =
 -- | getLeafInfo takes Text of teminal (no ',') and parses to yeild
 -- either a single leaf label, edge, and edge weight, or two
 -- leaves with labels and costs if there is a network node as parent
--- also searches for existing node labels to make correct edge and node 
--- if no new node is needed to be crearted (since already exists due to
--- network set dummy node with index -1 to be finltered later
--- scans for existing nodes and retuns if found, and sets appropriate edge indices
+-- need to merge network nodes later
 getLeafInfo :: T.Text -> G.LNode T.Text -> [G.LNode T.Text] -> [(G.LNode T.Text,G.LEdge Double)]
 getLeafInfo leafText parentNode nodeList = 
   if T.null leafText then error "Empty leaf text in getLeafInfo"
@@ -319,8 +319,10 @@ getLeafInfo leafText parentNode nodeList =
           -- CHECK FOR EXISTING
           thisNode = (length nodeList, leafLabel)
           thisEdge = (fst parentNode, length nodeList, edgeWeight)
-          preexistingNode = checkForExistingNode leafLabel nodeList
+          --preexistingNode = checkForExistingNode leafLabel nodeList
       in
+      [(thisNode, thisEdge)]
+      {-
       if (preexistingNode == Nothing) then [(thisNode, thisEdge)]
       else 
         let newNode = fromJust preexistingNode
@@ -328,6 +330,7 @@ getLeafInfo leafText parentNode nodeList =
         in
         -- (-1) node index  filtered later to keep node list in good order
         [((-1, snd newNode), newEdge)]
+        -}
 
     --complex leaf label
     --leaf and leafParent nodes
@@ -349,10 +352,15 @@ getLeafInfo leafText parentNode nodeList =
           leafNode = (1 + (length nodeList), leafLabel)
           leafEdge = (fst leafParentNode, fst leafNode, leafEdgeWeight)
 
+          {-
           -- Check for existing nodes--assumes parent and child do not have same label
           existingLeafNode = checkForExistingNode leafLabel nodeList
           existingleafParentNode = checkForExistingNode leafParentLabel nodeList
+          -}
       in
+      [(leafNode, leafEdge),(leafParentNode, leafParentEdge)]
+
+      {-
       if ((existingLeafNode == Nothing) && (existingleafParentNode == Nothing)) then [(leafNode, leafEdge),(leafParentNode, leafParentEdge)]
       else if (existingLeafNode == Nothing) then 
         -- leaf existing, parent new
@@ -381,6 +389,7 @@ getLeafInfo leafText parentNode nodeList =
             newLeafParentEdge = (fst parentNode, fst newParentNode, leafParentEdgeWeight)
         in
         [(newLeafNode, newLeafEdge),(newLeafParentNode, newLeafParentEdge)]
+        -}
 
 
 -- | getBodyParts takes a Text of a subTree and splits out the group description '(blah)', any node label
@@ -485,11 +494,12 @@ checkIfLeaf inText =
 
 -- | eNewick2FGL takes a single Extended Newick (Text) string and returns FGL graph
 -- allows arbitrary in and out degree except for root and leaves
-eNewick2FGL :: [G.LNode T.Text] -> [G.LEdge Double] -> G.LNode T.Text -> [T.Text] -> [(G.LNode T.Text,G.LEdge Double)]
-eNewick2FGL nodeList edgeList parentNode inTextList = 
-    if null inTextList then []
+eNewick2FGL :: [G.LNode T.Text] -> [G.LEdge Double] -> [(T.Text, G.LNode T.Text)] -> [(G.LNode T.Text,G.LEdge Double)]
+eNewick2FGL nodeList edgeList inTextParentList = 
+    if null inTextParentList then []
     else 
-      let inTextFirst = head inTextList
+      let inTextFirst = fst $ head inTextParentList
+          parentNode = snd $ head inTextParentList
           isRoot = null nodeList
       in  
       -- see if initial call and check format
@@ -512,25 +522,28 @@ eNewick2FGL nodeList edgeList parentNode inTextList =
               newNodeList = fmap fst newLeafList
               newEdgeList = fmap snd newLeafList
           in
-          newLeafList ++ (eNewick2FGL (newNodeList ++ nodeList) (newEdgeList ++ edgeList) parentNode (tail inTextList))
+          newLeafList ++ (eNewick2FGL (newNodeList ++ nodeList) (newEdgeList ++ edgeList) (tail inTextParentList))
         else 
           -- is subtree assumes start and end with parens '(blah)'
           let (subTree, nodeLabel, edgeWeight) = getBodyParts inText (length nodeList)
               thisNode = (length nodeList, nodeLabel)
               thisEdge = (fst parentNode, length nodeList, edgeWeight)
               childTextList = getChildren subTree
+              parentNodeList = replicate (length childTextList) thisNode
+              childParentList = zip childTextList parentNodeList
 
-              --check for existing node
-              existingNode = checkForExistingNode nodeLabel nodeList
           in
           trace ("-> " ++ show subTree ++ " " ++ show childTextList ++ " node " ++ show thisNode ++ " edge " ++ show thisEdge) (
-          if existingNode == Nothing then (thisNode, thisEdge) : eNewick2FGL (thisNode : nodeList) (thisEdge : edgeList) thisNode (childTextList ++ (tail inTextList))
+          -- if existingNode == Nothing then 
+          (thisNode, thisEdge) : eNewick2FGL (thisNode : nodeList) (thisEdge : edgeList) (childParentList ++ (tail inTextParentList))
+          {-
           else 
             let newNode = fromJust existingNode
                 newEdge = (fst parentNode, fst newNode, edgeWeight)
             in
           -- allows the filtering out redundant nodes (-1 index) later, keeps node list in good shape for index determination
-          ((-1, snd newNode), newEdge) : eNewick2FGL nodeList (newEdge : edgeList) thisNode (childTextList ++ (tail inTextList))
+          ((-1, snd newNode), newEdge) : eNewick2FGL nodeList (newEdge : edgeList) thisNode (childParentList ++ (tail inTextList))
+          -}
           ))
 
 -- | reindexNode takes an offset and adds to the node index
@@ -564,6 +577,7 @@ mergeFGLGraphs curGraph inGraphList =
 -- | getNodeIndexPair take a list of unique nodes and checks successive nodes and 
 -- adds to unique list, also creating a full list of pairs of indicess for non-unique that
 -- can be used as an index map for edges
+-- length of unique list to keep the node indices sequential
 getNodeIndexPair :: [G.LNode T.Text] -> [(Int, Int)] -> [G.LNode T.Text] -> ([G.LNode T.Text], [(Int, Int)])
 getNodeIndexPair uniqueList pairList nodeToCheckList =
   if null nodeToCheckList then (reverse uniqueList, reverse pairList)
@@ -571,7 +585,7 @@ getNodeIndexPair uniqueList pairList nodeToCheckList =
     let firstNode@(index, label) = head nodeToCheckList
         matchingNode = checkForExistingNode label uniqueList
     in
-    if matchingNode == Nothing then getNodeIndexPair (firstNode : uniqueList) ((index, index) : pairList) (tail nodeToCheckList)
+    if matchingNode == Nothing then getNodeIndexPair (firstNode : uniqueList) ((index, length uniqueList) : pairList) (tail nodeToCheckList)
     else 
       let existingNode = fromJust matchingNode
           newPair = (index, fst existingNode)
@@ -591,6 +605,17 @@ reIndexLEdge vertexMap inEdge =
     else if isNothing newU then error ("Error looking up vertex " ++ show u ++ " in " ++ show (e,u))
     else (fromJust newE, fromJust newU, label)
 
+-- | reIndexNode takes an (Int, Int) map, labelled node, and returns a new labelled node with new vertex
+reIndexLNode ::  Map.Map Int Int -> G.LNode T.Text -> G.LNode T.Text
+reIndexLNode vertexMap inNode =
+  if Map.null vertexMap then error "Null vertex map"
+  else
+    let (index,label) = inNode
+        newIndex = Map.lookup index vertexMap
+    in
+    if isNothing newIndex then error ("Error looking up vertex " ++ show index ++ " in " ++ show inNode)
+    else (fromJust newIndex, label)
+
 -- | mergeNetNodesAndEdges takes a single graph and merges 
 -- nodes and edges due to network nodes and edges
 -- uses checkForExistingNode and creates a map from nodes to reindex edges
@@ -600,11 +625,12 @@ mergeNetNodesAndEdges inGraph =
   if G.isEmpty inGraph then G.empty
   else 
     let nodeList = G.labNodes inGraph
-        (uniqueNodeList, nodeIndexPairs) = getNodeIndexPair [] [] nodeList
+        (_, nodeIndexPairs) = getNodeIndexPair [] [] nodeList
         nodeMap = Map.fromList nodeIndexPairs
+        reindexedNodeList = fmap (reIndexLNode nodeMap) (G.labNodes inGraph)
         reIndexedEdgeList = fmap (reIndexLEdge nodeMap) (G.labEdges inGraph)
     in
-    G.mkGraph uniqueNodeList reIndexedEdgeList
+    G.mkGraph reindexedNodeList reIndexedEdgeList
 
 -- | subTreeSize takes a nodeList and retuns the number of leaves that can be
 -- traced back to those nodes (for single just pass list of 1 node)

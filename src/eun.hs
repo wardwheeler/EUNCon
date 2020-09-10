@@ -629,17 +629,19 @@ removeUnconnectedHTUGraph inGraph leafNodes
 
 -- | sortInputArgs takes a list of arguments (Strings) nd retuns a pair of lists 
 -- of strings that are newick or graphviz dotFile filenames for later parsing
-sortInputArgs :: [String] -> [String] -> ([T.Text],[String],[String]) -> ([T.Text],[String],[String])
-sortInputArgs inContents inArgs (curNewick, curDot, curNewFiles) =
-  if null inArgs then (curNewick, curDot, curNewFiles)
+sortInputArgs :: [String] -> [String] -> ([T.Text],[T.Text],[String],[String],[String]) -> ([T.Text],[T.Text],[String],[String],[String])
+sortInputArgs inContents inArgs (curFEN, curNewick, curDot, curNewFiles, curFENFILES) =
+  if null inArgs then (curFEN, curNewick, curDot, curNewFiles, curFENFILES)
   else
     let firstFileName = head inArgs
         firstContents = filter (not . isSpace) $ head inContents
     in
     if head firstContents == '(' then
-      sortInputArgs (tail inContents) (tail inArgs) (T.pack firstContents : curNewick, curDot, firstFileName : curNewFiles)
-    else
-      sortInputArgs (tail inContents) (tail inArgs) (curNewick, firstFileName : curDot, curNewFiles)
+      sortInputArgs (tail inContents) (tail inArgs) (curFEN, T.pack firstContents : curNewick, curDot, firstFileName : curNewFiles, curFENFILES)
+    else if head firstContents == '<' then
+      sortInputArgs (tail inContents) (tail inArgs) (T.pack firstContents : curFEN, curNewick, curDot, curNewFiles, firstFileName : curFENFILES)
+    else -- assumes DOT
+      sortInputArgs (tail inContents) (tail inArgs) (curFEN, curNewick, firstFileName : curDot, curNewFiles, curFENFILES)
 
 -- | removeBranchLengths from Text group
 removeBranchLengths :: T.Text -> T.Text
@@ -799,9 +801,10 @@ main =
 
     -- Check for input Newick files and parse to fgl P.Gr graphs
     fileContentsList <- mapM readFile (drop 2 args)
-    let (newickFileTexts, dotArgs, newickArgs) = sortInputArgs fileContentsList (drop 2 args) ([],[],[])
+    let (forestEnhancedNewickFileTexts, newickFileTexts, dotArgs, newickArgs, forestEnhancedNewickArgs) = sortInputArgs fileContentsList (drop 2 args) ([],[],[],[],[])
     hPutStrLn stderr ("Graphviz Files " ++ show dotArgs)
     hPutStrLn stderr ("Newick Files " ++ show newickArgs)
+    hPutStrLn stderr ("Forest Enhanced Newick Files " ++ show forestEnhancedNewickArgs)
 
     let newickTextList = filter (not.T.null) $ T.split (==';') $ removeNewickComments (T.concat newickFileTexts)
     -- hPutStrLn stderr $ show newickTextList
@@ -810,7 +813,7 @@ main =
     Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph newickGraphList)
 
     --New Newick parser
-    let newNewickGraphList = PhyP.forestEnhancedNewickStringList2FGLList (T.concat newickFileTexts)
+    let newNewickGraphList = PhyP.forestEnhancedNewickStringList2FGLList (T.concat $ newickFileTexts ++ forestEnhancedNewickFileTexts)
     hPutStrLn stderr ("New Newick inputs:\n")
     Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph newNewickGraphList)
     let outNewickList = PhyP.fglList2ForestEnhancedNewickString newNewickGraphList True
