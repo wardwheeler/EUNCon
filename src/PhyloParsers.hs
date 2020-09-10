@@ -263,7 +263,7 @@ splitForest inText =
     let partsList = filter (not.(T.null)) $ T.splitOn (T.singleton ';') (T.init $ T.tail inText)
         eNewickList = fmap (`T.append` (T.singleton ';')) partsList
     in
-    trace ("split forest: " ++ show partsList ++ " -> " ++ show eNewickList)
+    -- trace ("split forest: " ++ show partsList ++ " -> " ++ show eNewickList)
     eNewickList
 
 -- | makeGraphFromPairList takes pair of node list and edge list and returns Graph
@@ -510,7 +510,7 @@ eNewick2FGL nodeList edgeList inTextParentList =
         let inText = if isRoot then T.takeWhile (/= ';') inTextFirst else inTextFirst -- remove trailing ';' if first (a bit wasteful--but intial check on format)
             isLeaf = checkIfLeaf inText
         in
-        trace ("Parsing " ++ show inText ++ " from parent " ++ show parentNode ++ " " ++ show isLeaf)(
+        -- trace ("Parsing " ++ show inText ++ " from parent " ++ show parentNode ++ " " ++ show isLeaf)(
       -- is a single leaf
       -- need better could be  series of indegree `1 outdegree 1 nodes to a single leaf with no ','
       -- like (a(b(c(d))))
@@ -533,7 +533,7 @@ eNewick2FGL nodeList edgeList inTextParentList =
               childParentList = zip childTextList parentNodeList
 
           in
-          trace ("-> " ++ show subTree ++ " " ++ show childTextList ++ " node " ++ show thisNode ++ " edge " ++ show thisEdge) (
+          -- trace ("-> " ++ show subTree ++ " " ++ show childTextList ++ " node " ++ show thisNode ++ " edge " ++ show thisEdge) (
           -- if existingNode == Nothing then 
           (thisNode, thisEdge) : eNewick2FGL (thisNode : nodeList) (thisEdge : edgeList) (childParentList ++ (tail inTextParentList))
           {-
@@ -544,7 +544,7 @@ eNewick2FGL nodeList edgeList inTextParentList =
           -- allows the filtering out redundant nodes (-1 index) later, keeps node list in good shape for index determination
           ((-1, snd newNode), newEdge) : eNewick2FGL nodeList (newEdge : edgeList) thisNode (childParentList ++ (tail inTextList))
           -}
-          ))
+          -- ))
 
 -- | reindexNode takes an offset and adds to the node index
 -- returning new node
