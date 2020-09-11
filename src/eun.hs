@@ -65,9 +65,6 @@ import Data.Monoid
 import Data.Char
 import qualified Adams as A
 import qualified PhyloParsers as PhyP
-
--- import Data.Typeable
-
 -- import Debug.Trace
 
 
@@ -80,7 +77,6 @@ instance NFData BV.BV where
 -- Preferred over parMap which is limited to lists
 parmap :: Traversable t => Strategy b -> (a->b) -> t a -> t b
 parmap strat f = withStrategy (parTraversable strat).fmap f
-
 
 -- | functions for triples 
 fst3 :: (a,b,c) -> a
@@ -245,7 +241,6 @@ getLeafString (nodeIndex, nodeLabel) =
   in
   maybe (show nodeIndex) T.unpack maybeTextLabel
 
-
 -- | getLeafList reutnds leaf complement of graph
 getLeafList ::  P.Gr Attributes Attributes -> [G.LNode String]
 getLeafList inGraph =
@@ -287,7 +282,6 @@ checkNodesSequential prevNode inNodeList
   | (head inNodeList - prevNode) /= 1 = False
   | otherwise = checkNodesSequential (head inNodeList) (tail inNodeList)
   -- )
-
 
 -- | reAnnotateGraphs takes parsed graph input and reformats for EUN 
 reAnnotateGraphs :: P.Gr String String -> P.Gr BV.BV (BV.BV, BV.BV)
@@ -403,7 +397,6 @@ isSelfEdge (e,u,_) = e == u
 -- and cretes a new labelled edge
 makeEdge :: G.Node -> BV.BV ->  G.Node -> G.LEdge (BV.BV, BV.BV)
 makeEdge uNode eBV eNode = (eNode, uNode, (eBV,eBV))
-
 
 -- | makeOiutOneEdgeList takes a ;list of self edges and deg=0 nodes and makes new edges with nodes
 -- the number should be equal
@@ -721,8 +714,6 @@ main =
     let outNewickList = PhyP.fglList2ForestEnhancedNewickString newickGraphList True
     hPutStrLn stderr ("Back to Newick outputs:\n")
     hPutStrLn stderr outNewickList
-    
-
 
     -- input dot files
     (dotGraphList :: [DotGraph G.Node]) <- mapM readDotFile dotArgs
@@ -746,7 +737,6 @@ main =
     let allOK = foldl' (&&) True sanityList
     if allOK then hPutStrLn stderr "Input Graphs passed sanity checks"
     else error ("Sanity check error(s) on input graphs (False = Failed) Non-sequential node indices: " ++ show (zip [0..(length sanityList - 1)] sanityList))
-
 
     -- Add in "missing" leaves from individual graphs and renumber edges
     hPutStrLn stderr "Reindexing Dots"
@@ -783,8 +773,6 @@ main =
     let labelledEUNGraph = addGraphLabels eunGraph totallLeafSet
     -- Create EUN Dot file 
     let eunOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledEUNGraph -- eunGraph
-
-
 
     -- Create strict consensus
     let intersectionBVs = foldl1' intersect (fmap (fmap snd . G.labNodes) processedGraphs)
