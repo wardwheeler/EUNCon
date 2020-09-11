@@ -65,6 +65,7 @@ import Data.Monoid
 import Data.Char
 import qualified Adams as A
 import qualified PhyloParsers as PhyP
+
 -- import Data.Typeable
 
 -- import Debug.Trace
@@ -262,7 +263,7 @@ getLeafList inGraph =
 
 -- | getLeafListNewick returns leaf complement of graph from newick file
 -- difference from above is in the leaf label type 
-getLeafListNewick ::  P.Gr String String -> [G.LNode String]
+getLeafListNewick ::  P.Gr a b -> [G.LNode a]
 getLeafListNewick inGraph =
   if G.isEmpty inGraph then []
   else
@@ -643,26 +644,6 @@ sortInputArgs inContents inArgs (curFEN, curNewick, curDot, curNewFiles, curFENF
     else -- assumes DOT
       sortInputArgs (tail inContents) (tail inArgs) (curFEN, curNewick, firstFileName : curDot, curNewFiles, curFENFILES)
 
--- | removeBranchLengths from Text group
-removeBranchLengths :: T.Text -> T.Text
-removeBranchLengths inName
-  | T.null inName = inName
-  | T.last inName == ')' = inName
-  | not (T.any (==':') inName) = inName
-  | otherwise = T.reverse $ T.tail $ T.dropWhile (/=':') $ T.reverse inName
-    -- )
-
--- | removeNewickComments take string and removes all "[...]"
-removeNewickComments :: T.Text -> T.Text
-removeNewickComments inString
-  | T.null inString = T.empty
-  | not (T.any (==']') inString) = inString
-  | otherwise =
-  let firstPart = T.takeWhile (/='[') inString
-      secondPart = T.tail $ T.dropWhile (/=']') inString
-  in
-  T.append firstPart (removeNewickComments secondPart)
-
 -- | removeComma take string and removes leading and terminal commas if present
 removeComma :: T.Text -> T.Text
 removeComma inString
@@ -671,18 +652,6 @@ removeComma inString
   | T.head inString == ',' = removeComma (T.tail inString)
   | T.last inString == ',' = removeComma (T.init inString)
   | otherwise = inString
-
--- | getLeafNodesAndEdges thisNode leaves 
-getLeafNodesAndEdges :: G.LNode String -> Int -> [T.Text] -> [G.LNode String] -> [G.LEdge String] -> ([G.LNode String],[G.LEdge String])
-getLeafNodesAndEdges parentNode numNodes leaves inNodes inEdges
-  | null leaves = (inNodes, inEdges)
-  | T.null (head leaves) = getLeafNodesAndEdges parentNode numNodes (tail leaves) inNodes inEdges
-  | otherwise =
-  let leafName = T.unpack $ removeBranchLengths (head leaves)
-      thisNode = (numNodes, leafName)
-      thisEdge = (fst parentNode, numNodes, "Edge(" ++ show (fst parentNode) ++ "," ++ show numNodes ++ ")")
-  in
-  getLeafNodesAndEdges parentNode (numNodes + 1) (tail leaves) (thisNode : inNodes) (thisEdge : inEdges)
 
 -- | countParensAndSplit counts the left and right parens and if they are equal and > 0 splits Text
 countParensAndSplit :: T.Text -> Int -> Int -> Int -> (T.Text, T.Text)
@@ -703,85 +672,24 @@ countParensAndSplit groupText leftParen rightParen pos' =
       else countParensAndSplit groupText leftParen (rightParen + 1) (pos' + 1)
     else countParensAndSplit groupText leftParen rightParen (pos' + 1)
 
--- | splitNewickGroups groupText
-splitNewickGroups :: T.Text -> [T.Text]
-splitNewickGroups groupText =
-  --trace ("Splitting " ++ (T.unpack groupText)) (
-  if T.null groupText then []
-  else
-    let (first, rest) = countParensAndSplit groupText (0 :: Int) (0 :: Int) (1 :: Int)
+-- | nodeText2String takes a node with text label and returns a node with String label
+nodeText2String :: G.LNode T.Text -> G.LNode String
+nodeText2String (index, label) = (index, T.unpack label)
+
+-- | fglTextA2TextString converts the graph types from Text A to Text String
+fglTextB2Text :: (Show b) => P.Gr b Double -> P.Gr b T.Text
+fglTextB2Text inGraph =
+  if G.isEmpty inGraph then G.empty
+  else 
+    let labNodes = G.labNodes inGraph
+        labEdges = G.labEdges inGraph
+        (eList, uList, labelList) = unzip3 labEdges
+        --- newLabels = fmap toShortest labelList
+        newLabels = fmap T.pack $ fmap show labelList
+        newEdges = zip3 eList uList newLabels
     in
-    --trace ("->" ++ (T.unpack $ removeComma first) ++ "|" ++ (T.unpack $ removeComma rest)) 
-    removeComma first : splitNewickGroups (removeComma rest)
-    --)
-
--- | splitLeafNonLeafText take alist of Text and splits into leaf (no '(') and
--- non-leaf (with '(') lists
-splitLeafNonLeafText :: [T.Text] -> [T.Text] -> [T.Text] ->  ([T.Text],[T.Text])
-splitLeafNonLeafText inTextList leafList nonLeafList =
-  if null inTextList then (leafList, nonLeafList)
-  else
-    let firstGroup = head inTextList
-        hasParen = T.any (=='(') firstGroup
-    in
-    if hasParen then splitLeafNonLeafText (tail inTextList) leafList (firstGroup : nonLeafList)
-    else splitLeafNonLeafText (tail inTextList) (firstGroup : leafList) nonLeafList
-
-
-
--- | newickToGraph takes text of newick description (no terminal ';')
--- ther shoudl be no spaces in the text--filtered earlier.
--- and recurives creates a nodes and edges in fgl library style
--- progresively consumes the text, each apren block representing a node->subtree 
--- operates on lists of Text so can recurse over subgroups of whatever size
--- EDGES WRONG FOR test-3.tre
--- ??? make edges and nodes after split before recurse
-newickToGraph :: [G.LNode String] -> [G.LEdge String] -> G.LNode String -> [T.Text] -> P.Gr String String
-newickToGraph nodeList edgeList parentNode inNewickTextList =
-  -- trace ("Parsing " ++ (show inNewickTextList))  (
-  if null inNewickTextList then
-      -- remove edge to root and make graph
-      G.mkGraph nodeList (filter ((> (-1)).fst3) edgeList)
-  else
-      let inNewickText = head inNewickTextList
-      in
-      if T.null inNewickText then G.empty
-      -- is a leaf name only
-      else if not (T.any (=='(') inNewickText) then
-        let leaves = T.split (==',') inNewickText
-            (newNodes, newEdges) = getLeafNodesAndEdges parentNode (length nodeList) leaves [] []
-        in
-        newickToGraph (nodeList ++ newNodes) (edgeList ++ newEdges) parentNode (tail inNewickTextList)
-      -- should have '(' ')' and some charcters
-      else if T.length inNewickText < 3 then error ("Improper newick tree component: " ++ T.unpack inNewickText)
-      else
-        --remove  labels (e.g. branch length as :XXX) on total group defined by '(...)' and remove outer parens
-        let groupText = removeBranchLengths $ T.tail $ T.init $ removeBranchLengths inNewickText
-            isSubTree = T.any (=='(') groupText
-            thisNode = (length nodeList, "HTU" ++ show (length nodeList))
-            thisEdge = (fst parentNode, length nodeList, "Edge(" ++ show (fst parentNode) ++ "," ++ show (length nodeList) ++ ")")
-        in
-        -- a set of leaves
-        if not isSubTree then
-          let leaves = T.split (==',') groupText
-              (newNodes, newEdges) = getLeafNodesAndEdges thisNode (1 + length nodeList) leaves [] []
-          in
-          newickToGraph ((thisNode : nodeList) ++ newNodes) ((thisEdge : edgeList) ++ newEdges) parentNode (tail inNewickTextList)
-
-        -- is a sub tree
-        else
-          -- find subtrees and recurse
-          let subTrees = splitNewickGroups groupText
-              -- spit into leaf and non-leaf descenedents
-              (leafNodes, nonLeafNodes) = splitLeafNonLeafText subTrees [] []
-              -- make any leaf nodes and edges
-              (newNodes, newEdges) = getLeafNodesAndEdges thisNode (1 + length nodeList) leafNodes [] []
-          in
-          -- recurse the remainder
-          newickToGraph ((thisNode : nodeList) ++ newNodes) ((thisEdge : edgeList) ++ newEdges) thisNode (nonLeafNodes ++ tail inNewickTextList)
-          
-
-
+    G.mkGraph labNodes newEdges
+        
 -- | main driver
 main :: IO ()
 main =
@@ -806,17 +714,11 @@ main =
     hPutStrLn stderr ("Newick Files " ++ show newickArgs)
     hPutStrLn stderr ("Forest Enhanced Newick Files " ++ show forestEnhancedNewickArgs)
 
-    let newickTextList = filter (not.T.null) $ T.split (==';') $ removeNewickComments (T.concat newickFileTexts)
-    -- hPutStrLn stderr $ show newickTextList
-    let newickGraphList = fmap (newickToGraph [] [] (-1, "") . (:[])) newickTextList
-    hPutStrLn stderr ("Newick inputs:\n")
-    Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph newickGraphList)
-
     --New Newick parser
-    let newNewickGraphList = PhyP.forestEnhancedNewickStringList2FGLList (T.concat $ newickFileTexts ++ forestEnhancedNewickFileTexts)
+    let newickGraphList = PhyP.forestEnhancedNewickStringList2FGLList (T.concat $ newickFileTexts ++ forestEnhancedNewickFileTexts)
     hPutStrLn stderr ("New Newick inputs:\n")
-    Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph newNewickGraphList)
-    let outNewickList = PhyP.fglList2ForestEnhancedNewickString newNewickGraphList True
+    Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph newickGraphList)
+    let outNewickList = PhyP.fglList2ForestEnhancedNewickString newickGraphList True
     hPutStrLn stderr ("Back to Newick outputs:\n")
     hPutStrLn stderr outNewickList
     
@@ -832,7 +734,7 @@ main =
     -- this to allow for missing data (leaves) in input graphs
     -- and leaves not in same order
     let inputLeafListsDot = parmap rdeepseq  getLeafList inputGraphListDot
-    let inputLeafListsNewick = parmap rdeepseq  getLeafListNewick newickGraphList
+    let inputLeafListsNewick = fmap (fmap nodeText2String) $ parmap rdeepseq  getLeafListNewick newickGraphList
 
     let totallLeafString = foldl' union [] (fmap (fmap snd) (inputLeafListsDot ++ inputLeafListsNewick))
     let totallLeafSet = zip [0..(length totallLeafString - 1)] totallLeafString
@@ -851,7 +753,7 @@ main =
     let fullLeafSetGraphsDot = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsDot inputGraphListDot
     -- Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph fullLeafSetGraphsDot)
     hPutStrLn stderr "Reindexing Newicks"
-    let fullLeafSetGraphsNewick = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsNewick newickGraphList
+    let fullLeafSetGraphsNewick = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsNewick (fmap fglTextB2Text newickGraphList)
     -- Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph fullLeafSetGraphsNewick)
     hPutStrLn stderr "Joining Graphs"
     let fullLeafSetGraphs = fullLeafSetGraphsDot ++ fullLeafSetGraphsNewick

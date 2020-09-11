@@ -33,6 +33,7 @@ executable euncon
                 , deepseq
                 , vector
                 , bv
+                , double-conversion
                 
                 
                 
