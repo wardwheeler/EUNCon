@@ -135,7 +135,7 @@ import Debug.Trace
 import Control.Parallel.Strategies
 
 {--  
-    Using Text as ouput for non-standard ascii charcaters (accents, umlautes etc)
+    Using Text as ouput for non-standard ascii characters (accents, umlautes etc)
 --}
 
 -- | 
@@ -321,20 +321,6 @@ getLeafInfo leafText parentNode nodeList =
           thisEdge = (fst parentNode, length nodeList, edgeWeight)
           --preexistingNode = checkForExistingNode leafLabel nodeList
       in
-      [(thisNode, thisEdge)]
-      {-
-      if (preexistingNode == Nothing) then [(thisNode, thisEdge)]
-      else 
-        let newNode = fromJust preexistingNode
-            newEdge = (fst parentNode, fst newNode, edgeWeight)
-        in
-        -- (-1) node index  filtered later to keep node list in good order
-        [((-1, snd newNode), newEdge)]
-        -}
-
-    --complex leaf label
-    --leaf and leafParent nodes
-    -- sublabelText:Double
     else 
       let -- leaf parent info 
           -- (leafLabel)leafParentLabel:leafParentBranchLength
@@ -351,46 +337,8 @@ getLeafInfo leafText parentNode nodeList =
           leafEdgeWeight = getBranchLength leafLabelText
           leafNode = (1 + (length nodeList), leafLabel)
           leafEdge = (fst leafParentNode, fst leafNode, leafEdgeWeight)
-
-          {-
-          -- Check for existing nodes--assumes parent and child do not have same label
-          existingLeafNode = checkForExistingNode leafLabel nodeList
-          existingleafParentNode = checkForExistingNode leafParentLabel nodeList
-          -}
       in
       [(leafNode, leafEdge),(leafParentNode, leafParentEdge)]
-
-      {-
-      if ((existingLeafNode == Nothing) && (existingleafParentNode == Nothing)) then [(leafNode, leafEdge),(leafParentNode, leafParentEdge)]
-      else if (existingLeafNode == Nothing) then 
-        -- leaf existing, parent new
-        let newLeaf = fromJust existingLeafNode
-            newLeafNode = (-1, snd newLeaf)
-            newLeafEdge = (fst leafParentNode, fst newLeaf, leafEdgeWeight)
-        in
-        [(newLeafNode, newLeafEdge),(leafParentNode, leafParentEdge)]
-
-
-      else if (existingleafParentNode == Nothing) then 
-        -- parent existing, leaf new
-        let newParentNode = fromJust existingleafParentNode
-            newLeafParentNode = (-1, snd newParentNode)
-            newLeafParentEdge = (fst parentNode, fst newParentNode, leafParentEdgeWeight)
-        in
-        [(leafNode, leafEdge),(newLeafParentNode, newLeafParentEdge)]
-
-      else 
-        -- both leaf and parent existed (not actually allowed in "phylogenetic" graph but not excluded by format)
-        let newLeaf = fromJust existingLeafNode
-            newParentNode = fromJust existingleafParentNode
-            newLeafNode = (-1, snd newLeaf)
-            newLeafParentNode = (-1, snd newParentNode)
-            newLeafEdge = (fst newParentNode, fst newLeaf, leafEdgeWeight)
-            newLeafParentEdge = (fst parentNode, fst newParentNode, leafParentEdgeWeight)
-        in
-        [(newLeafNode, newLeafEdge),(newLeafParentNode, newLeafParentEdge)]
-        -}
-
 
 -- | getBodyParts takes a Text of a subTree and splits out the group description '(blah)', any node label
 -- and any branch length
@@ -536,16 +484,7 @@ eNewick2FGL nodeList edgeList inTextParentList =
           -- trace ("-> " ++ show subTree ++ " " ++ show childTextList ++ " node " ++ show thisNode ++ " edge " ++ show thisEdge) (
           -- if existingNode == Nothing then 
           (thisNode, thisEdge) : eNewick2FGL (thisNode : nodeList) (thisEdge : edgeList) (childParentList ++ (tail inTextParentList))
-          {-
-          else 
-            let newNode = fromJust existingNode
-                newEdge = (fst parentNode, fst newNode, edgeWeight)
-            in
-          -- allows the filtering out redundant nodes (-1 index) later, keeps node list in good shape for index determination
-          ((-1, snd newNode), newEdge) : eNewick2FGL nodeList (newEdge : edgeList) thisNode (childParentList ++ (tail inTextList))
-          -}
-          -- ))
-
+          
 -- | reindexNode takes an offset and adds to the node index
 -- returning new node
 reindexNode :: Int -> G.LNode T.Text -> G.LNode T.Text 
