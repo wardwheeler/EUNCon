@@ -241,7 +241,7 @@ getLeafString (nodeIndex, nodeLabel) =
   in
   maybe (show nodeIndex) T.unpack maybeTextLabel
 
--- | getLeafList reutnds leaf complement of graph
+-- | getLeafList returns leaf complement of graph from DOT file
 getLeafList ::  P.Gr Attributes Attributes -> [G.LNode String]
 getLeafList inGraph =
   if G.isEmpty inGraph then []
@@ -690,7 +690,7 @@ main =
     -- Process arguments
     --  csv file first line taxon/leaf names, subsequent lines are distances--must be symmetrical
     args <- getArgs
-    if length args < 4 then error "Need at least 4 arguments: method (eun or consensus), a minimum percent representation (Integer), and at least two input GraphViz dot or Newick files"
+    if length args < 3 then error "Need at least 3 arguments: method (eun or consensus), a minimum percent representation (Integer), and at least one input GraphViz dot or Newick files including two or more graphs"
     else hPutStrLn stderr ("\nReading " ++ show (length args - 2) ++ " input files Output to stdout")
     Prelude.mapM_ (hPutStrLn stderr) $ fmap show (zip [0..(length args-3)] (drop 2 args))
 
@@ -709,11 +709,13 @@ main =
 
     --New Newick parser
     let newickGraphList = PhyP.forestEnhancedNewickStringList2FGLList (T.concat $ newickFileTexts ++ forestEnhancedNewickFileTexts)
+    {-
     hPutStrLn stderr ("New Newick inputs:\n")
     Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph newickGraphList)
     let outNewickList = PhyP.fglList2ForestEnhancedNewickString newickGraphList True
     hPutStrLn stderr ("Back to Newick outputs:\n")
     hPutStrLn stderr outNewickList
+    -}
 
     -- input dot files
     (dotGraphList :: [DotGraph G.Node]) <- mapM readDotFile dotArgs
@@ -721,6 +723,8 @@ main =
     -- initial conversion to fgl Graph format
     let (inputGraphListDot :: [P.Gr Attributes Attributes]) = fmap dotToGraph  dotGraphList
 
+    if ((length dotGraphList) + (length newickGraphList)) < 2 then error ("Need 2 or more input graphs and " ++ (show ((length dotGraphList) + (length newickGraphList))) ++ " have been input")
+    else hPutStrLn stderr ("\nThere are " ++ show ((length dotGraphList) + (length newickGraphList)) ++ " input graphs") 
     -- Get leaf sets for each graph (dot and newick separately due to types) and then their union
     -- this to allow for missing data (leaves) in input graphs
     -- and leaves not in same order
@@ -735,18 +739,19 @@ main =
     let sanityListNewick = parmap rdeepseq  (checkNodesSequential  (-1)) (fmap G.nodes newickGraphList)
     let sanityList = sanityListDot ++ sanityListNewick
     let allOK = foldl' (&&) True sanityList
-    if allOK then hPutStrLn stderr "Input Graphs passed sanity checks"
+    if allOK then hPutStrLn stderr "\nInput Graphs passed sanity checks"
     else error ("Sanity check error(s) on input graphs (False = Failed) Non-sequential node indices: " ++ show (zip [0..(length sanityList - 1)] sanityList))
 
     -- Add in "missing" leaves from individual graphs and renumber edges
-    hPutStrLn stderr "Reindexing Dots"
+    -- hPutStrLn stderr "Reindexing Dots"
     let fullLeafSetGraphsDot = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsDot inputGraphListDot
     -- Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph fullLeafSetGraphsDot)
-    hPutStrLn stderr "Reindexing Newicks"
+    -- hPutStrLn stderr "Reindexing Newicks"
     let fullLeafSetGraphsNewick = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsNewick (fmap fglTextB2Text newickGraphList)
     -- Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph fullLeafSetGraphsNewick)
-    hPutStrLn stderr "Joining Graphs"
+    -- hPutStrLn stderr "Joining Graphs"
     let fullLeafSetGraphs = fullLeafSetGraphsDot ++ fullLeafSetGraphsNewick
+    -- Prelude.mapM_ (hPutStrLn stderr) $ fmap show totallLeafSet
     -- Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph fullLeafSetGraphs)
 
     -- Reformat graphs with appropriate annotations, BV.BVs, etc
@@ -764,7 +769,7 @@ main =
 
     -- Won't keep this--just for comparative purposes
     let (totalGraph :: P.Gr BV.BV (BV.BV, BV.BV)) = G.mkGraph unionNodes unionEdges
-    hPutStrLn stderr ("Total Graph with " ++ show (length $ G.labNodes totalGraph) ++ " nodes and " ++ show (length $ G.labEdges totalGraph) ++ " edges")
+    hPutStrLn stderr ("\nTotal Graph with " ++ show (length $ G.labNodes totalGraph) ++ " nodes and " ++ show (length $ G.labEdges totalGraph) ++ " edges")
 
     -- EUN as in Miyagi anmd WHeeler (2019)
     let eunGraph = makeEUN unionNodes unionEdges
@@ -785,10 +790,10 @@ main =
     let strictConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledConsensusGraph
 
     -- Creat Adams II consensus
-    let adamsIIBV = A.makeAdamsII processedGraphs
-    let labelledAdamsII = addGraphLabels adamsIIBV totallLeafSet
-    let adamsIIInfo = "There are " ++ show (length $ G.nodes labelledAdamsII) ++ " nodes present in Adams II consensus"
-    let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledAdamsII
+    let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs 
+    -- let labelledAdamsII = addGraphLabels adamsIIBV totallLeafSet
+    let adamsIIInfo = "There are " ++ show (length $ G.nodes adamsII) ++ " nodes present in Adams II consensus"
+    let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams adamsII
 
 
     -- Create thresholdMajority rule Consensus and dot string
@@ -808,13 +813,14 @@ main =
 
     -- Remove unnconnected HTU nodes
     let thresholdEUNGraph = removeUnconnectedHTUGraph thresholdEUNGraph' leafNodes
-    let thresholdEUNInfo =  "Threshold EUN deleted " ++ show (length unionEdges - length (G.labEdges thresholdEUNGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
+    let thresholdEUNInfo =  "\nThreshold EUN deleted " ++ show (length unionEdges - length (G.labEdges thresholdEUNGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
     let thresholdLabelledEUNGraph = addGraphLabels thresholdEUNGraph totallLeafSet
     -- Create EUN Dot file 
     let thresholdEUNOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams thresholdLabelledEUNGraph -- eunGraph
 
     -- Output Dot file
+    -- ad enewick and better soecification majority/strict/adams/eun
     if method == "eun" then
         if threshold == 0 then  do {hPutStrLn stderr eunInfo; putStrLn eunOutDotString}
         else do {hPutStrLn stderr thresholdEUNInfo; putStrLn thresholdEUNOutDotString}
@@ -823,6 +829,6 @@ main =
         if threshold == 100 then do {hPutStrLn stderr strictConInfo; putStrLn strictConsensusOutDotString}
         else do {hPutStrLn stderr thresholdConInfo; putStrLn thresholdConsensusOutDotString}
     else error ("Graph combination method " ++ method ++ " is not implemented")
-    hPutStrLn stderr "Done"
+    hPutStrLn stderr "\nDone"
 
 

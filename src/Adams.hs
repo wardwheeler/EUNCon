@@ -1,6 +1,6 @@
 {- |
 Module      :  adams.hs 
-Description :  functions to create Adams II consensus trees
+Description :  functions to create Adams II consensus trees (unlabelled internal veritices)
 Copyright   :  (c) 2020 Ward C. Wheeler, Division of Invertebrate Zoology, AMNH. All rights reserved.
 License     :  
 
@@ -95,22 +95,172 @@ myStrategy = rdeepseq
 getNumThreads :: Int
 getNumThreads = unsafePerformIO getNumCapabilities
 
+-- | getAdamsIIPair inputs 2 PhyloGraphVects and returns AdamsII consensus 
+getAdamsIIPair ::  PhyloGraphVect -> PhyloGraphVect -> PhyloGraphVect
+getAdamsIIPair inGraphVectA inGraphVectB =
+        let inGraphVectList = [inGraphVectA, inGraphVectB]
+            (sameLeafSet, leafSets) = getAndCheckLeafSets inGraphVectList
+            curVertexSets = map fst inGraphVectList
+            rootPairList = map (findRoot 0) inGraphVectList
+            --rootIndexList = map fst rootPairList
+            rootVertexList = map snd rootPairList
+            rootSplits = map getSecond rootVertexList
+            rootSplitLeafListList = getSplitLeafListList rootSplits inGraphVectList
+            rootLUBPre = leastUpperBound rootSplitLeafListList
+            rootLUB = map sort $ [x | x <- rootLUBPre, length x > 0] --need map sort $
+            
+            --create nodes based on LUBs
+            leavesPlaced = concat $  [x | x <- rootLUB, length x < 3]
+            rootNode = ("root", map lub2TreeRep rootLUB, [])
+            vertexLeafSetList = map (map getLeafSetFromNodeName) (map V.toList curVertexSets)
+            potentialVertexSets = map (map getSecond) (map V.toList curVertexSets)
+        in
+        if (sameLeafSet == False) then error ("Leaf sets of input graphs do not match"  ++ show leafSets)
+        else
+          --return processed when have all nodes
+            let allAdamsNodes = makeAdamsNodes [rootNode] "root" rootLUB leavesPlaced (zip potentialVertexSets vertexLeafSetList) --curVertexSets vertexLeafSetList
+            in
+            genPhyNet2PhyloGraphVect allAdamsNodes
+-- | mkGraphPair take LNode list lEdge List pair and reutns fgl graph
+mkGraphPair :: ([G.LNode a], [G.LEdge b]) -> P.Gr a b
+mkGraphPair (nodeList, edgeList) = G.mkGraph nodeList edgeList
+
+            
+-- | makeAdamsII takes a list of fgl graphs, convertes them to PhyloGraphVect 
+-- makes the Adamns consensus and then converts back to fgl for return to EUN code
+makeAdamsII :: (Show a) => [G.LNode String] -> [P.Gr String a] ->  P.Gr String a
+makeAdamsII leafNodeList inFGList =
+  if null leafNodeList then error "Null leaf node list in makeAdamsII" 
+  else if null inFGList then G.empty
+  else 
+    let inGraphNodes = fmap G.labNodes inFGList
+        inGraphEdges = fmap G.labEdges inFGList
+        inGraphNonLeafNodes = fmap (drop $ length leafNodeList) inGraphNodes
+        newNodeListList = fmap (leafNodeList ++ ) inGraphNonLeafNodes
+        inFGList' = fmap mkGraphPair $ zip  newNodeListList inGraphEdges
+        allTreesList = seqParMap myStrategy isTree inFGList'
+        allTrees = foldl1' (&&) allTreesList
+    in
+    if not allTrees then error ("Input graphs are not all trees in makeAdamsII: " ++ (show allTreesList))
+    else if not (leafSetConstant [] inFGList) then error "Input leaf sets not constant in makeAdamsII"
+    else 
+      let inPGVList = fmap fgl2PGV inFGList' -- paralle problem with NFData seqParMap myStrategy fgl2PGV inFGList
+          adamsPGV = foldl1' getAdamsIIPair inPGVList
+      in
+      trace (show inPGVList)
+      pgv2FGL adamsPGV
+
+-- | fgl2PGVEdge takes an fgl Labeled edge (e,u,label)
+-- and returns a PGV edge  with no brnach length (e,u,Nothing)
+fgl2PGVEdge :: (G.LEdge b) -> Edge 
+fgl2PGVEdge (e, u, _) = (e, u, Nothing) 
+
+-- | fgl2PGVNode takes a tripple of an fgl labelled node (Int, a), its
+-- child verteces and parent versitices and returns the PGV Vertex including its type
+fgl2PGVNode :: (G.LNode String, [Int], [Int]) -> Vertex
+fgl2PGVNode ((index, label), childList, parentList) =
+    --if null label then error "Null node label in fgl2PGVNode"
+    --else 
+    if null parentList then (label, childList, parentList, Root)
+    else if null childList then (label, childList, parentList, Leaf)
+    else if length parentList == 1 then (label, childList, parentList, Tree)
+    else if length parentList > 1 then (label, childList, parentList, Network)
+    else error "This can't happen in fgl2PGVNode"
+
 -- | fgl2PGV takes an fgl (functional graph) and convertes to PhyloGraphVect
 -- to use local (and old) Adams consensus functions
-fgl2PGV :: P.Gr BV.BV (BV.BV, BV.BV) -> PhyloGraphVect
-fgl2PGV inFunctionalGraph =
-  (V.empty, V.empty)
+-- retuns "Nothing" for edge labels ( no need for branch lengths)
+fgl2PGV :: P.Gr String b -> PhyloGraphVect
+fgl2PGV inGraph =
+    if G.isEmpty inGraph then nullGraphVect
+    else 
+        let fglNodeList = G.labNodes inGraph
+            fglNodeParentList = fmap (G.pre inGraph) (fmap fst fglNodeList)
+            fglNodeChildList = fmap (G.suc inGraph) (fmap fst fglNodeList)
+            fglNodeInfoList = zip3 fglNodeList fglNodeChildList fglNodeParentList
+            fglEdgeList = G.labEdges inGraph
+            pgvNodeList = fmap fgl2PGVNode fglNodeInfoList
+            pgvEdgeList = fmap fgl2PGVEdge fglEdgeList
+        in
+        (V.fromList pgvNodeList, V.fromList pgvEdgeList)
 
 -- | pgv2FGL take a PhyloGraphVect and converts to an fgl graph
-pgv2FGL :: PhyloGraphVect -> P.Gr BV.BV (BV.BV, BV.BV)
+pgv2FGL :: PhyloGraphVect -> P.Gr a b
 pgv2FGL inPhyloGraphVect  =
   G.empty
 
--- | isTree takes fgl graph and checks is conected, no self loops, songle root, no indegree
--- > 1 nodes
-isTree :: P.Gr BV.BV (BV.BV, BV.BV) -> Bool
-isTree inFunctionalGraph = 
-  True
+-- | getLeafList returns sorted leaf complement of graph fgl
+getLeafLabelListFGL ::  (Eq a, Ord a) => P.Gr a b -> [a]
+getLeafLabelListFGL inGraph =
+  if G.isEmpty inGraph then error "Empty graph in getLeafLabelListFGL"
+  else
+    let degOutList = G.outdeg inGraph <$> G.nodes inGraph
+        newNodePair = zip degOutList (G.labNodes inGraph)
+        leafPairList = filter ((==0).fst ) newNodePair
+        (_, leafList) = unzip leafPairList
+    in
+    sort $ fmap snd $ leafList
+
+-- | leafSetConstant takes a series of fgl graphs and checks if leaf sets are the same for
+-- all of them
+leafSetConstant :: (Eq a, Ord a) => [a] -> [P.Gr a b] -> Bool
+leafSetConstant leafList inFGLList =
+    if null inFGLList then True
+    else if null leafList then 
+        -- first graph
+        let firstGraph = head inFGLList
+            firstLeaves = getLeafLabelListFGL firstGraph
+        in
+        leafSetConstant firstLeaves (tail inFGLList)
+    else 
+        let thisGraph = head inFGLList
+            theseLeaves = getLeafLabelListFGL thisGraph
+        in
+        if theseLeaves /= leafList then False
+        else leafSetConstant leafList (tail inFGLList)
+
+-- | showGraph a semi-formatted show for Graphs
+showGraph :: (Show a, Show b) => P.Gr a b -> String -- BV.BV (BV.BV, BV.BV) -> String
+showGraph inGraph =
+  if G.isEmpty inGraph then "Empty Graph"
+  else
+      let nodeString = show $ G.labNodes inGraph
+          edgeString  = show $ G.labEdges inGraph
+      in
+      ("Nodes:" ++ nodeString ++ "\n" ++ "Edges: " ++ edgeString)
+
+
+-- | isTree takes fgl graph and checks is conected, no self edges, single root (includes connected), no indegree
+-- > 1 nodes, leaf labels appear only once
+isTree :: (Show a, Eq a, Ord a, Show b) => P.Gr a b -> Bool
+isTree inGraph = 
+  if G.isEmpty inGraph then False
+  else 
+    -- trace (showGraph inGraph) (
+    let nodeIndegrees = G.indeg inGraph <$> G.nodes inGraph
+        maxIndegree = maximum nodeIndegrees
+        rootNodes =  filter (==0) nodeIndegrees
+        leafLabels = getLeafLabelListFGL inGraph
+        uniqueLeafLabels = nub leafLabels
+        eList = fmap fst $ G.edges inGraph
+        uList = fmap snd $ G.edges inGraph
+        selfList = filter (== True) $ zipWith (==) eList uList
+    in
+    -- trace ("roots: " ++ show rootNodes ++ " length " ++ (show $ length rootNodes) ++ " max Indegree: " ++ show maxIndegree ++ " labels unique: " ++ show  leafLabels  ++ " nub " ++ show (nub leafLabels)
+        -- ++ " self edges: " ++ show selfList ++ "\n" ++ show (length rootNodes == 1, maxIndegree == 1, length leafLabels == length uniqueLeafLabels, null selfList)) (
+    -- number roots/connected
+    if length rootNodes /= 1 then False
+    -- network nodes
+    else if maxIndegree > 1 then False
+    -- unique leaves
+    else if length leafLabels /= length uniqueLeafLabels then False
+    -- self edges
+    else if not $ null selfList then False
+    else True 
+    -- )
+    --)
+
+
 
 -- | getRootNamesFromGenPhyNet extracts non-leaf-non-root 
 -- names from vertices in order found
@@ -468,45 +618,3 @@ findRoot index inGraph  =
             findRoot (index + 1) inGraph
      else error "Index exceeeds vertex number in findRoot"
 
--- | getAdamsIIPair inputs 2 PhyloGraphVects and returns AdamsII consensus 
-getAdamsIIPair ::  PhyloGraphVect -> PhyloGraphVect -> PhyloGraphVect
-getAdamsIIPair inGraphVectA inGraphVectB =
-        let inGraphVectList = [inGraphVectA, inGraphVectB]
-            (sameLeafSet, leafSets) = getAndCheckLeafSets inGraphVectList
-            curVertexSets = map fst inGraphVectList
-            rootPairList = map (findRoot 0) inGraphVectList
-            --rootIndexList = map fst rootPairList
-            rootVertexList = map snd rootPairList
-            rootSplits = map getSecond rootVertexList
-            rootSplitLeafListList = getSplitLeafListList rootSplits inGraphVectList
-            rootLUBPre = leastUpperBound rootSplitLeafListList
-            rootLUB = map sort $ [x | x <- rootLUBPre, length x > 0] --need map sort $
-            
-            --create nodes based on LUBs
-            leavesPlaced = concat $  [x | x <- rootLUB, length x < 3]
-            rootNode = ("root", map lub2TreeRep rootLUB, [])
-            vertexLeafSetList = map (map getLeafSetFromNodeName) (map V.toList curVertexSets)
-            potentialVertexSets = map (map getSecond) (map V.toList curVertexSets)
-        in
-        if (sameLeafSet == False) then error ("Leaf sets of input graphs do not match"  ++ show leafSets)
-        else
-          --return processed when have all nodes
-            let allAdamsNodes = makeAdamsNodes [rootNode] "root" rootLUB leavesPlaced (zip potentialVertexSets vertexLeafSetList) --curVertexSets vertexLeafSetList
-            in
-            genPhyNet2PhyloGraphVect allAdamsNodes
-            
--- | makeAdamsII takes a list of fgl graphs, convertes them to PhyloGraphVect 
--- makes the Adamns consensus and then converts back to fgl for return to EUN code
-makeAdamsII :: [P.Gr BV.BV (BV.BV, BV.BV)] ->  P.Gr BV.BV (BV.BV, BV.BV)
-makeAdamsII inFGList =
-  if null inFGList then G.empty
-  else 
-    let allTreesList = seqParMap myStrategy isTree inFGList
-        allTrees = foldl1' (&&) allTreesList
-    in
-    if not allTrees then error ("Input graphs are not all trees: " ++ (show allTreesList))
-    else 
-      let inPGVList = fmap fgl2PGV inFGList -- paralle problem with NFData seqParMap myStrategy fgl2PGV inFGList
-          adamsPGV = foldl1' getAdamsIIPair inPGVList
-      in
-      pgv2FGL adamsPGV

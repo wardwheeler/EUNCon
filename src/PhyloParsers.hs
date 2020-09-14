@@ -157,7 +157,7 @@ forestEnhancedNewickStringList2FGLList fileText =
     else 
         let feNewickList = fmap removeNewickSpaces $ fmap removeNewickComments $ divideGraphText fileText
         in
-        trace ("There are " ++ (show $ length feNewickList) ++ " graphs to convert: " ++ (show feNewickList))
+        -- trace ("There are " ++ (show $ length feNewickList) ++ " graphs to convert: " ++ (show feNewickList))
         parmap rdeepseq text2FGLGraph feNewickList
  
 -- | divideGraphText splits multiple Text representations of graphs (Newick styles)
