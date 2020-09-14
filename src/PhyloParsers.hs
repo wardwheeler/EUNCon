@@ -321,6 +321,7 @@ getLeafInfo leafText parentNode nodeList =
           thisEdge = (fst parentNode, length nodeList, edgeWeight)
           --preexistingNode = checkForExistingNode leafLabel nodeList
       in
+      [(thisNode, thisEdge)]
     else 
       let -- leaf parent info 
           -- (leafLabel)leafParentLabel:leafParentBranchLength
