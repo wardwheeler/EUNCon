@@ -121,7 +121,9 @@ Example:
 --}
 
 module PhyloParsers (forestEnhancedNewickStringList2FGLList,
-                     fglList2ForestEnhancedNewickString
+                     fglList2ForestEnhancedNewickString,
+                     component2Newick,
+                     checkIfLeaf
                     ) where
 
 import Data.Maybe

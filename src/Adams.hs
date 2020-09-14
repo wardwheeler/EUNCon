@@ -50,6 +50,8 @@ import qualified Data.BitVector as BV
 import Control.Parallel.Strategies
 import Control.Concurrent
 import System.IO.Unsafe
+import qualified PhyloParsers as PhyP
+import qualified Data.Text.Lazy as T
 
 
 {-
@@ -121,6 +123,7 @@ getAdamsIIPair inGraphVectA inGraphVectB =
             let allAdamsNodes = makeAdamsNodes [rootNode] "root" rootLUB leavesPlaced (zip potentialVertexSets vertexLeafSetList) --curVertexSets vertexLeafSetList
             in
             genPhyNet2PhyloGraphVect allAdamsNodes
+
 -- | mkGraphPair take LNode list lEdge List pair and reutns fgl graph
 mkGraphPair :: ([G.LNode a], [G.LEdge b]) -> P.Gr a b
 mkGraphPair (nodeList, edgeList) = G.mkGraph nodeList edgeList
@@ -128,7 +131,7 @@ mkGraphPair (nodeList, edgeList) = G.mkGraph nodeList edgeList
             
 -- | makeAdamsII takes a list of fgl graphs, convertes them to PhyloGraphVect 
 -- makes the Adamns consensus and then converts back to fgl for return to EUN code
-makeAdamsII :: (Show a) => [G.LNode String] -> [P.Gr String a] ->  P.Gr String a
+makeAdamsII :: (Show a) => [G.LNode String] -> [P.Gr String a] ->  P.Gr String Double
 makeAdamsII leafNodeList inFGList =
   if null leafNodeList then error "Null leaf node list in makeAdamsII" 
   else if null inFGList then G.empty
@@ -147,7 +150,7 @@ makeAdamsII leafNodeList inFGList =
       let inPGVList = fmap fgl2PGV inFGList' -- paralle problem with NFData seqParMap myStrategy fgl2PGV inFGList
           adamsPGV = foldl1' getAdamsIIPair inPGVList
       in
-      trace (show inPGVList)
+      trace ("\nAdams: " ++ show adamsPGV)
       pgv2FGL adamsPGV
 
 -- | fgl2PGVEdge takes an fgl Labeled edge (e,u,label)
@@ -155,12 +158,25 @@ makeAdamsII leafNodeList inFGList =
 fgl2PGVEdge :: (G.LEdge b) -> Edge 
 fgl2PGVEdge (e, u, _) = (e, u, Nothing) 
 
+-- |  stringGraph2TextGraph take P.Gr String a and converts to P.Gr Text a
+stringGraph2TextGraph :: P.Gr String b -> P.Gr T.Text b
+stringGraph2TextGraph inStringGraph =
+    let (indices, labels) = unzip $ G.labNodes inStringGraph
+        edges = G.labEdges inStringGraph
+        textLabels = fmap T.pack labels
+        newNodes = zip indices textLabels
+    in
+    G.mkGraph newNodes edges
+
 -- | fgl2PGVNode takes a tripple of an fgl labelled node (Int, a), its
 -- child verteces and parent versitices and returns the PGV Vertex including its type
-fgl2PGVNode :: (G.LNode String, [Int], [Int]) -> Vertex
-fgl2PGVNode ((index, label), childList, parentList) =
+fgl2PGVNode :: (Show b) => P.Gr T.Text b -> (G.LNode String, [Int], [Int]) -> Vertex
+fgl2PGVNode inGraph ((index, inLabel), childList, parentList) =
     --if null label then error "Null node label in fgl2PGVNode"
     --else 
+    let guts = T.init $ PhyP.component2Newick inGraph False (index, T.pack inLabel)
+        label = if PhyP.checkIfLeaf guts then T.unpack $ T.tail $ T.init guts else T.unpack guts
+    in
     if null parentList then (label, childList, parentList, Root)
     else if null childList then (label, childList, parentList, Leaf)
     else if length parentList == 1 then (label, childList, parentList, Tree)
@@ -170,7 +186,7 @@ fgl2PGVNode ((index, label), childList, parentList) =
 -- | fgl2PGV takes an fgl (functional graph) and convertes to PhyloGraphVect
 -- to use local (and old) Adams consensus functions
 -- retuns "Nothing" for edge labels ( no need for branch lengths)
-fgl2PGV :: P.Gr String b -> PhyloGraphVect
+fgl2PGV :: (Show b) => P.Gr String b -> PhyloGraphVect
 fgl2PGV inGraph =
     if G.isEmpty inGraph then nullGraphVect
     else 
@@ -179,15 +195,33 @@ fgl2PGV inGraph =
             fglNodeChildList = fmap (G.suc inGraph) (fmap fst fglNodeList)
             fglNodeInfoList = zip3 fglNodeList fglNodeChildList fglNodeParentList
             fglEdgeList = G.labEdges inGraph
-            pgvNodeList = fmap fgl2PGVNode fglNodeInfoList
+            pgvNodeList = fmap (fgl2PGVNode (stringGraph2TextGraph inGraph)) fglNodeInfoList
             pgvEdgeList = fmap fgl2PGVEdge fglEdgeList
         in
         (V.fromList pgvNodeList, V.fromList pgvEdgeList)
 
+-- | vertex2Node take alist of vertices and returns a list of fgl Labelled nodes
+vertex2Node :: Int -> V.Vector Vertex -> [G.LNode String]
+vertex2Node counter inVertexVect = 
+    if V.null inVertexVect then []
+    else 
+        let (label, _, _, _) = V.head inVertexVect
+        in
+        (counter, label) : vertex2Node (counter + 1) (V.tail inVertexVect)
+
+-- | edge2FGLEdge take vertex of Int Int Maybe Double and returns 
+-- fgl node with type Double
+edge2FGLEdge :: (Int, Int, Maybe Double) -> (Int, Int, Double)
+edge2FGLEdge (e, u, _) = (e,u, 1.0 :: Double)
+
 -- | pgv2FGL take a PhyloGraphVect and converts to an fgl graph
-pgv2FGL :: PhyloGraphVect -> P.Gr a b
-pgv2FGL inPhyloGraphVect  =
-  G.empty
+pgv2FGL :: PhyloGraphVect -> P.Gr String Double
+pgv2FGL (inVertexVect, inEdgeVect) =
+    let fglNodes = vertex2Node 0 inVertexVect
+        fglEdges = V.map edge2FGLEdge inEdgeVect
+    in
+    G.mkGraph fglNodes (V.toList fglEdges)
+  
 
 -- | getLeafList returns sorted leaf complement of graph fgl
 getLeafLabelListFGL ::  (Eq a, Ord a) => P.Gr a b -> [a]
