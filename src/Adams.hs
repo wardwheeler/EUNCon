@@ -253,24 +253,12 @@ leafSetConstant leafList inFGLList =
         if theseLeaves /= leafList then False
         else leafSetConstant leafList (tail inFGLList)
 
--- | showGraph a semi-formatted show for Graphs
-showGraph :: (Show a, Show b) => P.Gr a b -> String -- BV.BV (BV.BV, BV.BV) -> String
-showGraph inGraph =
-  if G.isEmpty inGraph then "Empty Graph"
-  else
-      let nodeString = show $ G.labNodes inGraph
-          edgeString  = show $ G.labEdges inGraph
-      in
-      ("Nodes:" ++ nodeString ++ "\n" ++ "Edges: " ++ edgeString)
-
-
 -- | isTree takes fgl graph and checks is conected, no self edges, single root (includes connected), no indegree
 -- > 1 nodes, leaf labels appear only once
 isTree :: (Show a, Eq a, Ord a, Show b) => P.Gr a b -> Bool
 isTree inGraph = 
   if G.isEmpty inGraph then False
   else 
-    -- trace (showGraph inGraph) (
     let nodeIndegrees = G.indeg inGraph <$> G.nodes inGraph
         maxIndegree = maximum nodeIndegrees
         rootNodes =  filter (==0) nodeIndegrees
@@ -280,9 +268,6 @@ isTree inGraph =
         uList = fmap snd $ G.edges inGraph
         selfList = filter (== True) $ zipWith (==) eList uList
     in
-    -- trace ("roots: " ++ show rootNodes ++ " length " ++ (show $ length rootNodes) ++ " max Indegree: " ++ show maxIndegree ++ " labels unique: " ++ show  leafLabels  ++ " nub " ++ show (nub leafLabels)
-        -- ++ " self edges: " ++ show selfList ++ "\n" ++ show (length rootNodes == 1, maxIndegree == 1, length leafLabels == length uniqueLeafLabels, null selfList)) (
-    -- number roots/connected
     if length rootNodes /= 1 then False
     -- network nodes
     else if maxIndegree > 1 then False
@@ -291,10 +276,6 @@ isTree inGraph =
     -- self edges
     else if not $ null selfList then False
     else True 
-    -- )
-    --)
-
-
 
 -- | getRootNamesFromGenPhyNet extracts non-leaf-non-root 
 -- names from vertices in order found
