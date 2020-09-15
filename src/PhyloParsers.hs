@@ -125,7 +125,8 @@ module PhyloParsers (forestEnhancedNewickStringList2FGLList,
                      component2Newick,
                      checkIfLeaf,
                      stringGraph2TextGraph,
-                     textGraph2StringGraph
+                     textGraph2StringGraph,
+                     showGraph
                     ) where
 
 import Data.Maybe
@@ -152,6 +153,16 @@ parmap strat f = withStrategy (parTraversable strat).fmap f
 -- | function for first element of triple 
 fst3 :: (a,b,c) -> a
 fst3 (d,_,_) = d
+
+-- | showGraph a semi-formatted show for Graphs
+showGraph :: (Show a, Show b) => P.Gr a b -> String -- BV.BV (BV.BV, BV.BV) -> String
+showGraph inGraph =
+  if G.isEmpty inGraph then "Empty Graph"
+  else
+      let nodeString = show $ G.labNodes inGraph
+          edgeString  = show $ G.labEdges inGraph
+      in
+      ("Nodes:" ++ nodeString ++ "\n" ++ "Edges: " ++ edgeString)
 
 -- | getForestEnhancedNewickList takes String file contents and returns a list 
 -- of fgl graphs with Text labels for nodes and edges or error if not ForestEnhancedNewick or Newick formats.

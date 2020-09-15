@@ -46,7 +46,6 @@ import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.PatriciaTree as P
 import Debug.Trace
 import qualified Data.Set as Set
-import qualified Data.BitVector as BV
 import Control.Parallel.Strategies
 import Control.Concurrent
 import System.IO.Unsafe

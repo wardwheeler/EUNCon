@@ -79,10 +79,6 @@ instance NFData BV.BV where
 parmap :: Traversable t => Strategy b -> (a->b) -> t a -> t b
 parmap strat f = withStrategy (parTraversable strat).fmap f
 
--- | functions for triples 
-fst3 :: (a,b,c) -> a
-fst3 (d,_,_) = d
-
 -- | turnOnOutZeroBit turns on the bit 'nleaves" signifying that
 -- the node is outdegree 1
 -- this so outdegree one nodes and their child have differnet bit sets
@@ -101,16 +97,6 @@ setOutDegreeOneBit :: Int -> Int -> BV.BV -> BV.BV
 setOutDegreeOneBit outDegree nLeaves inBitVect =
   if outDegree == 1 then turnOnOutZeroBit inBitVect nLeaves
   else turnOffOutZeroBit inBitVect nLeaves
-
-
--- | writeFiles takes a stub and list of String
--- and writes to files usinf stub ++ number as naming convention
-writeFiles :: String -> String -> Int -> [String] -> IO ()
-writeFiles stub typeString number fileStuffList =
-  if null fileStuffList then hPutStrLn stderr ("Wrote " ++ show number ++ " " ++ stub ++ ".X." ++ typeString ++ " files")
-  else do
-    writeFile (stub ++ "." ++ show number ++ "." ++ typeString) (head fileStuffList)
-    writeFiles stub typeString (number + 1) (tail fileStuffList)
 
 -- | getRoot takes a greaph and list of nodes and returns vertex with indegree 0
 -- so assumes a connected graph--with a single root--not a forest
@@ -367,16 +353,6 @@ addAndReIndexEdges keepMethod indexedNodes edgesToExamine uniqueReIndexedEdges =
           addAndReIndexEdges keepMethod indexedNodes (tail edgesToExamine) (newEdge : uniqueReIndexedEdges)
       else addAndReIndexEdges keepMethod indexedNodes (tail edgesToExamine) uniqueReIndexedEdges
 
--- | showGraph a semi-formatted show for Graphs
-showGraph :: (Show a, Show b) => P.Gr a b -> String -- BV.BV (BV.BV, BV.BV) -> String
-showGraph inGraph =
-  if G.isEmpty inGraph then "Empty Graph"
-  else
-      let nodeString = show $ G.labNodes inGraph
-          edgeString  = show $ G.labEdges inGraph
-      in
-      ("Nodes:" ++ nodeString ++ "\n" ++ "Edges: " ++ edgeString)
-
 -- | testEdge nodeList fullEdgeList) counter
 testEdge :: [G.LNode BV.BV] -> [G.LEdge (BV.BV,BV.BV)] -> Int -> [G.LEdge (BV.BV,BV.BV)]
 testEdge nodeList fullEdgeList counter =
@@ -390,45 +366,6 @@ testEdge nodeList fullEdgeList counter =
   in
   [(e,u,l) | isNothing foundU]
 
--- | isSelfEdge returns True if e=u in (e,u), else False
-isSelfEdge :: G.LEdge a -> Bool
-isSelfEdge (e,u,_) = e == u
-
--- | makeEdge takes a terminal vertex and its BV.BV and a parent vertex
--- and cretes a new labelled edge
-makeEdge :: G.Node -> BV.BV ->  G.Node -> G.LEdge (BV.BV, BV.BV)
-makeEdge uNode eBV eNode = (eNode, uNode, (eBV,eBV))
-
--- | makeOiutOneEdgeList takes a ;list of self edges and deg=0 nodes and makes new edges with nodes
--- the number should be equal
-makeOutOneEdgeList :: P.Gr BV.BV (BV.BV,BV.BV) -> [G.LEdge (BV.BV,BV.BV)] -> [G.Node] -> [G.LEdge (BV.BV,BV.BV)]
-makeOutOneEdgeList inGraph selfEdgeList unConnectedNodeList
-  | length selfEdgeList > length unConnectedNodeList = error ("This seems like a problem--insufficent unconnected nodes: " ++ show unConnectedNodeList ++ " self edges: " ++ show selfEdgeList)
-  | null selfEdgeList = []
-  | otherwise =
-    let (e,_,(eBV,_)) = head selfEdgeList
-        u = head unConnectedNodeList
-        newChildEdge = (u,e,(eBV,eBV))
-        parentOfSelfEdgeNode = filter (/= e ) (G.pre inGraph e)
-    in
-    if null parentOfSelfEdgeNode then error ("No parents for self edge node " ++ show e)
-    else
-      let newParentEdges = fmap (makeEdge u eBV) parentOfSelfEdgeNode
-      in
-      (newChildEdge : newParentEdges) ++ makeOutOneEdgeList inGraph (tail selfEdgeList) (tail unConnectedNodeList)
-
--- | deleteEdges femoves edges in first leisty frpom edges in second
-deleteEdges :: [G.LEdge (BV.BV,BV.BV)] -> [G.LEdge (BV.BV,BV.BV)]-> [G.LEdge (BV.BV,BV.BV)]
-deleteEdges edgesToDelete edgesToCheckList
-  | null edgesToDelete = edgesToCheckList
-  | null edgesToCheckList = []
-  | otherwise =
-    let firstEdge = head edgesToCheckList
-        toKeep = notElem firstEdge edgesToDelete
-    in
-    if not toKeep then deleteEdges edgesToDelete (tail edgesToCheckList)
-    else firstEdge : deleteEdges edgesToDelete (tail edgesToCheckList)
-
 -- | makeEUN take list of nodes and edges, deletes each edge (e,u) in turn makes graph,
 -- checks for path between nodes e and u, if there is delete edge otherwise keep edeg in list for new graph
 makeEUN ::  [G.LNode BV.BV] -> [G.LEdge (BV.BV,BV.BV)] -> P.Gr BV.BV (BV.BV, BV.BV)
@@ -439,17 +376,6 @@ makeEUN nodeList fullEdgeList =
       newGraph = G.mkGraph nodeList requiredEdges
   in
   newGraph
-
--- areListsEqual etst two lists for equality in all elements
-areListsEqual :: (Eq a) => [a] -> [a] -> Bool
-areListsEqual inA inB
-  | length inA /= length inB = False
-  | null inA = True
-  | otherwise =
-    let firstA = head inA
-        firstB = head inB
-    in
-    firstA == firstB && areListsEqual (tail inA) (tail inB)
 
 -- | getLeafLabelMatches tyakes the total list and looks for elements in the smaller local leaf set
 -- retuns int index of the match or (-1) if not found so that leaf can be added in orginal order
@@ -552,12 +478,6 @@ getIntersectionEdges bNodeList aNode =
       else if intersection == bBV then (aIndex, bIndex, (aBV, bBV)) : getIntersectionEdges (tail bNodeList) aNode
       else  getIntersectionEdges (tail bNodeList) aNode)
 
-
--- | bvValue takes two nodes and compare based on BV for use in groupBy in getThresholdNodes
-bvValue :: G.LNode BV.BV -> G.LNode BV.BV -> Bool
-bvValue a b =
-  snd a == snd b
-
 -- |  getThresholdNodes takes a threshold and keeps those unique objects present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
 getThresholdNodes :: Int -> Int -> [[G.LNode BV.BV]] -> [G.LNode BV.BV]
@@ -637,34 +557,6 @@ sortInputArgs inContents inArgs (curFEN, curNewick, curDot, curNewFiles, curFENF
       sortInputArgs (tail inContents) (tail inArgs) (T.pack firstContents : curFEN, curNewick, curDot, curNewFiles, firstFileName : curFENFILES)
     else -- assumes DOT
       sortInputArgs (tail inContents) (tail inArgs) (curFEN, curNewick, firstFileName : curDot, curNewFiles, curFENFILES)
-
--- | removeComma take string and removes leading and terminal commas if present
-removeComma :: T.Text -> T.Text
-removeComma inString
-  | T.null inString = T.empty
-  | not (T.any (==',') inString) = inString
-  | T.head inString == ',' = removeComma (T.tail inString)
-  | T.last inString == ',' = removeComma (T.init inString)
-  | otherwise = inString
-
--- | countParensAndSplit counts the left and right parens and if they are equal and > 0 splits Text
-countParensAndSplit :: T.Text -> Int -> Int -> Int -> (T.Text, T.Text)
-countParensAndSplit groupText leftParen rightParen pos' =
-  let pos = fromIntegral pos'
-  in
-  if T.null groupText then error "Group split not found"
-  else if pos > T.length groupText then (groupText, T.empty)
-  else
-    let first = T.index groupText (pos - 1)  --T.head groupText
-    in
-    if first == '(' then
-      -- leading terminal
-      if (leftParen == rightParen) && (pos > 1) then (T.take (pos - 1) groupText, T.drop (pos - 1) groupText)
-      else countParensAndSplit groupText (leftParen + 1) rightParen (pos' + 1)
-    else if first == ')' then
-      if leftParen == (rightParen + 1) then (T.take pos groupText, T.drop pos groupText)
-      else countParensAndSplit groupText leftParen (rightParen + 1) (pos' + 1)
-    else countParensAndSplit groupText leftParen rightParen (pos' + 1)
 
 -- | nodeText2String takes a node with text label and returns a node with String label
 nodeText2String :: G.LNode T.Text -> G.LNode String
