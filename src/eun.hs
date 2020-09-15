@@ -99,7 +99,7 @@ setOutDegreeOneBit outDegree nLeaves inBitVect =
 -- so assumes a connected graph--with a single root--not a forest
 getRoots :: P.Gr String String -> [G.Node] -> [Int]
 getRoots inGraph nodeList =
-  if null nodeList then [] 
+  if null nodeList then []
   else
     let firstNode = head nodeList
     in
@@ -113,7 +113,7 @@ getUnConnectedNodes inGraph nLeaves nodeList =
   if null nodeList then []
   else
     let firstNode = head nodeList
-        newNode =  (firstNode, B.bit firstNode) 
+        newNode =  (firstNode, B.bit firstNode)
     in
     if G.deg inGraph firstNode == 0 then
       newNode : getUnConnectedNodes inGraph nLeaves (tail nodeList)
@@ -280,7 +280,7 @@ reAnnotateGraphs inGraph =
     in
     -- assign HTU BV via postorder pass.
     G.mkGraph allNodes allEdges
-    
+
 -- | checkBVs looks at BV.BV of node and retuns FALSE if found True if not
 checkBVs :: BV.BV -> [G.LNode BV.BV] -> Bool
 checkBVs inBV nodeList =
@@ -562,7 +562,7 @@ fglTextB2Text inGraph =
         labEdges = G.labEdges inGraph
         (eList, uList, labelList) = unzip3 labEdges
         --- newLabels = fmap toShortest labelList
-        newLabels = fmap T.pack $ fmap show labelList
+        newLabels = fmap (T.pack . show) labelList
         newEdges = zip3 eList uList newLabels
     in
     G.mkGraph labNodes newEdges
@@ -600,13 +600,13 @@ main =
     -- initial conversion to fgl Graph format
     let (inputGraphListDot :: [P.Gr Attributes Attributes]) = fmap dotToGraph  dotGraphList
 
-    if ((length dotGraphList) + (length newickGraphList)) < 2 then error ("Need 2 or more input graphs and " ++ (show ((length dotGraphList) + (length newickGraphList))) ++ " have been input")
-    else hPutStrLn stderr ("\nThere are " ++ show ((length dotGraphList) + (length newickGraphList)) ++ " input graphs")
+    if (length dotGraphList + length newickGraphList) < 2 then error ("Need 2 or more input graphs and " ++ show (length dotGraphList + length newickGraphList) ++ " have been input")
+    else hPutStrLn stderr ("\nThere are " ++ show (length dotGraphList + length newickGraphList) ++ " input graphs")
     -- Get leaf sets for each graph (dot and newick separately due to types) and then their union
     -- this to allow for missing data (leaves) in input graphs
     -- and leaves not in same order
     let inputLeafListsDot = parmap rdeepseq  getLeafList inputGraphListDot
-    let inputLeafListsNewick = fmap (fmap nodeText2String) $ parmap rdeepseq  getLeafListNewick newickGraphList
+    let inputLeafListsNewick = fmap nodeText2String <$> parmap rdeepseq  getLeafListNewick newickGraphList
 
     let totallLeafString = foldl' union [] (fmap (fmap snd) (inputLeafListsDot ++ inputLeafListsNewick))
     let totallLeafSet = zip [0..(length totallLeafString - 1)] totallLeafString
@@ -623,7 +623,7 @@ main =
     let fullLeafSetGraphsDot = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsDot inputGraphListDot
     let fullLeafSetGraphsNewick = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsNewick (fmap fglTextB2Text newickGraphList)
     let fullLeafSetGraphs = fullLeafSetGraphsDot ++ fullLeafSetGraphsNewick
-    
+
     -- Reformat graphs with appropriate annotations, BV.BVs, etc
     let processedGraphs = parmap rdeepseq reAnnotateGraphs fullLeafSetGraphs -- inputGraphList
 

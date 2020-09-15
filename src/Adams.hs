@@ -35,8 +35,8 @@ Portability :  portable (I hope)
 
 -}
 
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric  #-}
+
+
 
 module Adams (makeAdamsII) where
 
@@ -101,15 +101,15 @@ getAdamsIIPair inGraphVectA inGraphVectB =
             rootSplits = map getSecond rootVertexList
             rootSplitLeafListList = getSplitLeafListList rootSplits inGraphVectList
             rootLUBPre = leastUpperBound rootSplitLeafListList
-            rootLUB = map sort $ [x | x <- rootLUBPre, length x > 0] --need map sort $
+            rootLUB = map sort $ [x | x <- rootLUBPre, not (null x)] --need map sort $
 
             --create nodes based on LUBs
             leavesPlaced = concat $  [x | x <- rootLUB, length x < 3]
             rootNode = ("root", map lub2TreeRep rootLUB, [])
-            vertexLeafSetList = map (map getLeafSetFromNodeName) (map V.toList curVertexSets)
-            potentialVertexSets = map (map getSecond) (map V.toList curVertexSets)
+            vertexLeafSetList = map (map getLeafSetFromNodeName . V.toList) curVertexSets
+            potentialVertexSets = map (map getSecond . V.toList) curVertexSets
         in
-        if (sameLeafSet == False) then error ("Leaf sets of input graphs do not match"  ++ show leafSets)
+        if not sameLeafSet then error ("Leaf sets of input graphs do not match"  ++ show leafSets)
         else
           --return processed when have all nodes
             let allAdamsNodes = makeAdamsNodes [rootNode] "root" rootLUB leavesPlaced (zip potentialVertexSets vertexLeafSetList) --curVertexSets vertexLeafSetList
@@ -124,19 +124,19 @@ mkGraphPair (nodeList, edgeList) = G.mkGraph nodeList edgeList
 -- | makeAdamsII takes a list of fgl graphs, convertes them to PhyloGraphVect
 -- makes the Adamns consensus and then converts back to fgl for return to EUN code
 makeAdamsII :: (Show a) => [G.LNode String] -> [P.Gr String a] ->  P.Gr String Double
-makeAdamsII leafNodeList inFGList =
-  if null leafNodeList then error "Null leaf node list in makeAdamsII"
-  else if null inFGList then G.empty
-  else
+makeAdamsII leafNodeList inFGList
+  | null leafNodeList = error "Null leaf node list in makeAdamsII"
+  | null inFGList = G.empty
+  | otherwise =
     let inGraphNodes = fmap G.labNodes inFGList
         inGraphEdges = fmap G.labEdges inFGList
         inGraphNonLeafNodes = fmap (drop $ length leafNodeList) inGraphNodes
         newNodeListList = fmap (leafNodeList ++ ) inGraphNonLeafNodes
-        inFGList' = fmap mkGraphPair $ zip  newNodeListList inGraphEdges
+        inFGList' = mkGraphPair <$> zip  newNodeListList inGraphEdges
         allTreesList = seqParMap myStrategy isTree inFGList'
         allTrees = foldl1' (&&) allTreesList
     in
-    if not allTrees then error ("Input graphs are not all trees in makeAdamsII: " ++ (show allTreesList))
+    if not allTrees then error ("Input graphs are not all trees in makeAdamsII: " ++ show allTreesList)
     else if not (leafSetConstant [] inFGList) then error "Input leaf sets not constant in makeAdamsII"
     else
       let inPGVList = fmap fgl2PGV inFGList' -- paralle problem with NFData seqParMap myStrategy fgl2PGV inFGList
@@ -147,7 +147,7 @@ makeAdamsII leafNodeList inFGList =
 
 -- | fgl2PGVEdge takes an fgl Labeled edge (e,u,label)
 -- and returns a PGV edge  with no brnach length (e,u,Nothing)
-fgl2PGVEdge :: (G.LEdge b) -> Edge
+fgl2PGVEdge :: G.LEdge b -> Edge
 fgl2PGVEdge (e, u, _) = (e, u, Nothing)
 
 -- | fgl2PGVNode takes a tripple of an fgl labelled node (Int, a), its
@@ -173,8 +173,8 @@ fgl2PGV inGraph =
     if G.isEmpty inGraph then nullGraphVect
     else
         let fglNodeList = G.labNodes inGraph
-            fglNodeParentList = fmap (G.pre inGraph) (fmap fst fglNodeList)
-            fglNodeChildList = fmap (G.suc inGraph) (fmap fst fglNodeList)
+            fglNodeParentList = fmap (G.pre inGraph . fst) fglNodeList
+            fglNodeChildList = fmap (G.suc inGraph . fst) fglNodeList
             fglNodeInfoList = zip3 fglNodeList fglNodeChildList fglNodeParentList
             fglEdgeList = G.labEdges inGraph
             pgvNodeList = fmap (fgl2PGVNode (PhyP.stringGraph2TextGraph inGraph)) fglNodeInfoList
@@ -215,49 +215,40 @@ getLeafLabelListFGL inGraph =
         leafPairList = filter ((==0).fst ) newNodePair
         (_, leafList) = unzip leafPairList
     in
-    sort $ fmap snd $ leafList
+    sort $ snd <$> leafList
 
 -- | leafSetConstant takes a series of fgl graphs and checks if leaf sets are the same for
 -- all of them
 leafSetConstant :: (Eq a, Ord a) => [a] -> [P.Gr a b] -> Bool
-leafSetConstant leafList inFGLList =
-    if null inFGLList then True
-    else if null leafList then
-        -- first graph
-        let firstGraph = head inFGLList
-            firstLeaves = getLeafLabelListFGL firstGraph
-        in
-        leafSetConstant firstLeaves (tail inFGLList)
-    else
-        let thisGraph = head inFGLList
-            theseLeaves = getLeafLabelListFGL thisGraph
-        in
-        if theseLeaves /= leafList then False
-        else leafSetConstant leafList (tail inFGLList)
+leafSetConstant leafList inFGLList
+  | null inFGLList = True
+  | null leafList =
+    -- first graph
+    let firstGraph = head inFGLList
+        firstLeaves = getLeafLabelListFGL firstGraph
+    in
+    leafSetConstant firstLeaves (tail inFGLList)
+      | otherwise =
+    let thisGraph = head inFGLList
+        theseLeaves = getLeafLabelListFGL thisGraph
+    in
+    theseLeaves == leafList && leafSetConstant leafList (tail inFGLList)
 
 -- | isTree takes fgl graph and checks is conected, no self edges, single root (includes connected), no indegree
 -- > 1 nodes, leaf labels appear only once
 isTree :: (Show a, Eq a, Ord a, Show b) => P.Gr a b -> Bool
 isTree inGraph =
-  if G.isEmpty inGraph then False
-  else
-    let nodeIndegrees = G.indeg inGraph <$> G.nodes inGraph
-        maxIndegree = maximum nodeIndegrees
-        rootNodes =  filter (==0) nodeIndegrees
-        leafLabels = getLeafLabelListFGL inGraph
-        uniqueLeafLabels = nub leafLabels
-        eList = fmap fst $ G.edges inGraph
-        uList = fmap snd $ G.edges inGraph
-        selfList = filter (== True) $ zipWith (==) eList uList
-    in
-    if length rootNodes /= 1 then False
-    -- network nodes
-    else if maxIndegree > 1 then False
-    -- unique leaves
-    else if length leafLabels /= length uniqueLeafLabels then False
-    -- self edges
-    else if not $ null selfList then False
-    else True
+  not (G.isEmpty inGraph) && (
+  let nodeIndegrees = G.indeg inGraph <$> G.nodes inGraph
+      maxIndegree = maximum nodeIndegrees
+      rootNodes =  filter (==0) nodeIndegrees
+      leafLabels = getLeafLabelListFGL inGraph
+      uniqueLeafLabels = nub leafLabels
+      eList = fst <$> G.edges inGraph
+      uList = snd <$> G.edges inGraph
+      selfList = filter (== True) $ zipWith (==) eList uList
+  in
+  not ((((length rootNodes /= 1) || (maxIndegree > 1)) || (length leafLabels /= length uniqueLeafLabels)) || not (null selfList)))
 
 -- | getRootNamesFromGenPhyNet extracts non-leaf-non-root
 -- names from vertices in order found
@@ -268,7 +259,7 @@ getRootNamesFromGenPhyNet inNet =
         let (name, desc, anc) = head inNet
             vertType = getVertType (length desc) (length anc)
         in
-        if (vertType == Root) then
+        if vertType == Root then
             name : getRootNamesFromGenPhyNet (tail inNet)
         else
             getRootNamesFromGenPhyNet (tail inNet)
@@ -294,20 +285,20 @@ getLeafNamesFromGenPhyNet inNet =
     else
         let (name, desc, anc) = head inNet
         in
-        if (getVertType (length desc) (length anc)) == Leaf then
+        if getVertType (length desc) (length anc) == Leaf then
             name : getLeafNamesFromGenPhyNet (tail inNet)
         else
             getLeafNamesFromGenPhyNet (tail inNet)
 
 -- | getVertType takes list of desc and anc to determine type of vertex
 getVertType :: Int -> Int -> VertexType
-getVertType nDesc nAnc =
-    if (nDesc == 0) && (nAnc == 0) then error "Isolated node"
-    else if nAnc == 0 then Root
-    else if nDesc == 0 then Leaf
-    else if nAnc == 1 then Tree
-    else if nAnc > 2 then Network
-    else error ("Screwey node: indegree " ++ show nDesc ++ " outdegree " ++ show nAnc)
+getVertType nDesc nAnc
+  | (nDesc == 0) && (nAnc == 0) = error "Isolated node"
+  | nAnc == 0 = Root
+  | nDesc == 0 = Leaf
+  | nAnc == 1 = Tree
+  | nAnc > 2 = Network
+  | otherwise = error ("Screwey node: indegree " ++ show nDesc ++ " outdegree " ++ show nAnc)
 
 -- | getVertNum takes a list of vertex names and teh complete list and
 -- returns a list of the indices (integers) of the names
@@ -318,9 +309,9 @@ getVertNum nameList vertexNameList =
         let firstVertName = head vertexNameList
             vertNum = elemIndex firstVertName nameList
         in
-        if vertNum == Nothing then error ("Error in vertex name index: " ++ show firstVertName ++ " in " ++ show nameList)
+        if isNothing vertNum then error ("Error in vertex name index: " ++ show firstVertName ++ " in " ++ show nameList)
         else
-            (fromJust vertNum) : getVertNum nameList (tail vertexNameList)
+            fromJust vertNum : getVertNum nameList (tail vertexNameList)
 
 -- | oldIndex2New takes a PhyloGraphVect and creates a list of reorder based ordered name list
 oldIndex2New :: V.Vector Vertex  -> [String] -> [(Int, Vertex)]
@@ -331,7 +322,7 @@ oldIndex2New inVertexVect nameList =
             (vertName, _, _, _) = curVert
             vertNum = elemIndex vertName nameList
         in
-        (fromJust vertNum, curVert) : (oldIndex2New (V.tail inVertexVect) nameList)
+        (fromJust vertNum, curVert) : oldIndex2New (V.tail inVertexVect) nameList
 
 -- | genForestToPhyloGraph converts GenForest to PhyloGraph (so can use legacy
 -- ENewick etc parsers
@@ -360,8 +351,8 @@ genForestToPhyloGraphVect inGen inPhyVect nameList =
 -- leaves are first, then internal, root last
 getNamesFromGenPhyNet :: GenPhyNet  -> [String]
 getNamesFromGenPhyNet inNet =
-    (sort $ getLeafNamesFromGenPhyNet inNet) ++ (getNonLeafNonRootNamesFromGenPhyNet inNet)
-        ++ (getRootNamesFromGenPhyNet inNet)
+    sort (getLeafNamesFromGenPhyNet inNet) ++ getNonLeafNonRootNamesFromGenPhyNet inNet
+        ++ getRootNamesFromGenPhyNet inNet
 
 -- | getShortestList takes list and length and list of lists and return
 -- shortest list
@@ -384,7 +375,7 @@ getSplitList :: [String] -> [String] -> ([[Int]], [[String]]) -> [[String]]
 getSplitList curLUB placedTaxa (potentialVerts, vertLeafSet) =
     if null curLUB then error "Null LUB in getSplitList"
     else
-       let  vertList =  [(x, y) | (x, y)  <- (zip vertLeafSet potentialVerts), intersect x curLUB == curLUB]
+       let  vertList =  [(x, y) | (x, y)  <- zip vertLeafSet potentialVerts, intersect x curLUB == curLUB]
             smallestVert = snd $ getShortestList (head vertList) (length $ fst $ head vertList) (tail vertList)
             vectVertLeafSet = V.fromList vertLeafSet --adds factor of "n", could pass another variable?
             rawLUBs = map (vectVertLeafSet V.!) smallestVert
@@ -395,7 +386,7 @@ getSplitList curLUB placedTaxa (potentialVerts, vertLeafSet) =
 -- | replaceChar take set of charcters to be replaced by a char in a String
 replaceChar :: [Char] -> Char -> Char -> Char
 replaceChar inSet2Replace replaceChar2 inChar =
-    if elem inChar inSet2Replace then replaceChar2
+    if inChar `elem` inSet2Replace then replaceChar2
     else inChar
 
 -- | getVertsFromIndexList takes a list of vertex vector indices and returns a list of
@@ -406,7 +397,7 @@ getVertsFromIndexList indexList inGraphVect  =
     else
         let (vertVect, _) = inGraphVect
         in
-        (vertVect V.! (head indexList)) :  (getVertsFromIndexList (tail indexList) inGraphVect)
+        (vertVect V.! head indexList) :  getVertsFromIndexList (tail indexList) inGraphVect
 
 -- | ggenPhyNet2PhyloGraphVect takes as input GenPhyNet and return
 -- PhyloGraphVect with root as last node
@@ -416,7 +407,7 @@ genPhyNet2PhyloGraphVect inGenPhyNet =
     else
         let nameList = getNamesFromGenPhyNet inGenPhyNet
             (vertVect, edgeVect) = genForestToPhyloGraphVect (V.fromList inGenPhyNet) nullGraphVect nameList
-            newVertVect = vertVect V.// (oldIndex2New vertVect nameList)
+            newVertVect = vertVect V.// oldIndex2New vertVect nameList
         in
         (newVertVect, edgeVect)
 
@@ -440,20 +431,20 @@ makeAdamsNodes inAdamsTree parentName inLUBList placedTaxa bothLeafLists = --inT
                 newNode2 = (leftChild, [], [lub2TreeRep curLUB])
                 newNode3 = (rightChild, [], [lub2TreeRep curLUB])
                 newGenPhyNet = newNode2 : (newNode3 : (newNode1 : inAdamsTree))
-                newPlacedTaxa = (lub2TreeRep curLUB) : (leftChild : (rightChild : placedTaxa))
+                newPlacedTaxa = lub2TreeRep curLUB : (leftChild : (rightChild : placedTaxa))
             in
             makeAdamsNodes newGenPhyNet parentName (tail inLUBList)
                 newPlacedTaxa bothLeafLists --inTreeVertexLists vertexLeafSetList
         else --core case with LUB creation and taxon placementg
             let splitListList = map (getSplitList curLUB placedTaxa) bothLeafLists --(zip inTreeVertexLists vertexLeafSetList)
                 newLUBpre = leastUpperBound splitListList
-                newLUB =  map sort $ [x | x <- newLUBpre, length x > 0] --had "map sort $" was this "sort" necessary?  for List intersection?
+                newLUB =  map sort $ [x | x <- newLUBpre, not (null x)] --had "map sort $" was this "sort" necessary?  for List intersection?
                 newNode = (lub2TreeRep curLUB, map lub2TreeRep newLUB, [parentName])
             in
             --trace ("New LUBs " ++ show newLUB ++ " newNode " ++ show newNode)
-            (makeAdamsNodes (newNode : inAdamsTree) (lub2TreeRep curLUB) (tail inLUBList)
-                placedTaxa bothLeafLists) ++ --inTreeVertexLists vertexLeafSetList) ++
-                (makeAdamsNodes [] (lub2TreeRep curLUB) newLUB placedTaxa bothLeafLists) --inTreeVertexLists vertexLeafSetList)
+            makeAdamsNodes (newNode : inAdamsTree) (lub2TreeRep curLUB) (tail inLUBList)
+                placedTaxa bothLeafLists ++ --inTreeVertexLists vertexLeafSetList) ++
+                makeAdamsNodes [] (lub2TreeRep curLUB) newLUB placedTaxa bothLeafLists --inTreeVertexLists vertexLeafSetList)
 
 -- | getLeafSetFromNodeName takes String name of node and returns sorted list of leaf
 -- names--ASSUMES node names are not given in input and are assigned as trees
@@ -464,21 +455,20 @@ getLeafSetFromNodeName inVertex =
     in
     if null nodeName then error "Null node name in getLeafSetFromNodeName"
     else
-        let rawList = map (replaceChar ['(', ')', ','] (' ')) nodeName
+        let rawList = map (replaceChar ['(', ')', ','] ' ') nodeName
         in
         sort $ words rawList --this sort required
 
 -- | lub2TreeRep takes list of names and makes into unresolved subtree
 -- in parens
 lub2TreeRep :: [String] -> String
-lub2TreeRep inStringList =
-    if null inStringList then error "Null input in lub2TreeRep"
-    else
-        if length inStringList == 1 then head inStringList
-        else
-            let inside = init $ concat $ map  (++ ",") inStringList
-            in
-            ( '(' : inside ) ++ ")"
+lub2TreeRep inStringList
+  | null inStringList = error "Null input in lub2TreeRep"
+  | length inStringList == 1 = head inStringList
+  | otherwise =
+    let inside = init $ concatMap (++ ",") inStringList
+    in
+    ( '(' : inside ) ++ ")"
 
 -- | getDecendantLeafList iputs a vertex and returns leaf set (as list of
 -- leaf names as strings) descdended from
@@ -491,11 +481,11 @@ getDecendantLeafList inVertexList inGraphVect =
             descVertList = getVertsFromIndexList  descList inGraphVect
         in
         if vertType == Leaf then
-            curVertName : (getDecendantLeafList (tail inVertexList) inGraphVect)
+            curVertName : getDecendantLeafList (tail inVertexList) inGraphVect
         else
-            (getDecendantLeafList [head descVertList] inGraphVect )
-                ++ (getDecendantLeafList (tail descVertList) inGraphVect)
-                ++ (getDecendantLeafList (tail inVertexList) inGraphVect)
+            getDecendantLeafList [head descVertList] inGraphVect
+                ++ getDecendantLeafList (tail descVertList) inGraphVect
+                ++ getDecendantLeafList (tail inVertexList) inGraphVect
 
 -- | getSplitLeafList takes a node and returns a list of list of descendent leaves
 getSplitLeafList :: [Int] -> PhyloGraphVect -> [[String]]
@@ -510,45 +500,45 @@ getSplitLeafList descList inGraphVect =
 -- | getSplitLeafListList takes list of descenndents for PhyloGraphVect and
 -- returns a list of descendant list for each split of each tree
 getSplitLeafListList :: [[Int]] -> [PhyloGraphVect] -> [[[String]]]
-getSplitLeafListList descListList inGraphVectList =
-    if null descListList then []
-    else if null inGraphVectList then error "Diff numbers of descdent lists and graphs"
-    else
-        let curIntList = head descListList
-            curGraphVectList = head inGraphVectList
-        in
-        getSplitLeafList curIntList curGraphVectList :
-            (getSplitLeafListList (tail descListList) (tail inGraphVectList))
+getSplitLeafListList descListList inGraphVectList
+  | null descListList = []
+  | null inGraphVectList = error "Diff numbers of descdent lists and graphs"
+  | otherwise =
+    let curIntList = head descListList
+        curGraphVectList = head inGraphVectList
+    in
+    getSplitLeafList curIntList curGraphVectList :
+        getSplitLeafListList (tail descListList) (tail inGraphVectList)
 
 -- | lub2 takes two lists of lists of names and generates the pairswise set of
 -- intersections
 lub2 :: [[String]] -> [[String]] -> [[String]]
-lub2 s1 s2 =
-    if null s1 then []
-    else if null s2 then []
-    else
-        let intersectFirst = (intersect (head s1) (head s2)) : (lub2 [head s1] (tail s2))
-        in
-        intersectFirst ++ (lub2 (tail s1) s2)
+lub2 s1 s2
+  | null s1 = []
+  | null s2 = []
+  | otherwise =
+    let intersectFirst = intersect (head s1) (head s2) : lub2 [head s1] (tail s2)
+    in
+    intersectFirst ++ lub2 (tail s1) s2
 
 -- | leastUpperBound takes list of list vertex leaf descendants (as Strings)
 -- and returns LUB of Adams II (1972) consensus
 leastUpperBound :: [[[String]]] -> [[String]]
-leastUpperBound inVertexListList =
-    if length inVertexListList < 2 then
-        error "Too few name lists in leastUpperBound"
-    else if length inVertexListList == 2 then
-        let x = head inVertexListList
-            y = last inVertexListList
-        in
-        lub2 x y
-    else
-        let x = head inVertexListList
-            y = head $ tail inVertexListList
-            z = tail $ tail inVertexListList
-            t = lub2 x y
-        in
-        leastUpperBound (t : z)
+leastUpperBound inVertexListList
+  | length inVertexListList < 2 =
+    error "Too few name lists in leastUpperBound"
+  | length inVertexListList == 2 =
+    let x = head inVertexListList
+        y = last inVertexListList
+    in
+    lub2 x y
+      | otherwise =
+    let x = head inVertexListList
+        y = head $ tail inVertexListList
+        z = tail $ tail inVertexListList
+        t = lub2 x y
+    in
+    leastUpperBound (t : z)
 
 -- | get second retriueves 2nd element of 4
 getSecond :: (a, b, c, d) -> b
@@ -586,7 +576,7 @@ setEqual firstSet secondSet =
     let combinedElem = Set.union firstSet secondSet
         sameElem = Set.intersection firstSet secondSet
     in
-    Set.empty == (Set.difference combinedElem sameElem)
+    Set.empty == Set.difference combinedElem sameElem
 
 
 -- | getAndCheckLeafSets take graphs and checks that leaf sets are identical
