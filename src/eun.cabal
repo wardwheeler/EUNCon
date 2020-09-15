@@ -23,6 +23,7 @@ executable euncon
                 -threaded 
                 -O2
 		            -XBangPatterns
+                -fwrite-ide-info
 
   build-depends:  base >=4.10
                 , containers >=0.6
