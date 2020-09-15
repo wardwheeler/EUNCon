@@ -123,7 +123,9 @@ Example:
 module PhyloParsers (forestEnhancedNewickStringList2FGLList,
                      fglList2ForestEnhancedNewickString,
                      component2Newick,
-                     checkIfLeaf
+                     checkIfLeaf,
+                     stringGraph2TextGraph,
+                     textGraph2StringGraph
                     ) where
 
 import Data.Maybe
@@ -757,5 +759,22 @@ getNewick fglGraph writeEdgeWeight  inEdgeList =
         if not writeEdgeWeight then (T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel])  : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
         else (T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel]) : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
       
+-- |  stringGraph2TextGraph take P.Gr String a and converts to P.Gr Text a
+stringGraph2TextGraph :: P.Gr String b -> P.Gr T.Text b
+stringGraph2TextGraph inStringGraph =
+    let (indices, labels) = unzip $ G.labNodes inStringGraph
+        edges = G.labEdges inStringGraph
+        textLabels = fmap T.pack labels
+        newNodes = zip indices textLabels
+    in
+    G.mkGraph newNodes edges
 
-      
+    -- |  textGraph2StringGraph take P.Gr String a and converts to P.Gr Text a
+textGraph2StringGraph :: P.Gr T.Text b -> P.Gr String b
+textGraph2StringGraph inTextGraph =
+    let (indices, labels) = unzip $ G.labNodes inTextGraph
+        edges = G.labEdges inTextGraph
+        stringLabels = fmap T.unpack labels
+        newNodes = zip indices stringLabels
+    in
+    G.mkGraph newNodes edges

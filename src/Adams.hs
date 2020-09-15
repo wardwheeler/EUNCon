@@ -158,16 +158,6 @@ makeAdamsII leafNodeList inFGList =
 fgl2PGVEdge :: (G.LEdge b) -> Edge 
 fgl2PGVEdge (e, u, _) = (e, u, Nothing) 
 
--- |  stringGraph2TextGraph take P.Gr String a and converts to P.Gr Text a
-stringGraph2TextGraph :: P.Gr String b -> P.Gr T.Text b
-stringGraph2TextGraph inStringGraph =
-    let (indices, labels) = unzip $ G.labNodes inStringGraph
-        edges = G.labEdges inStringGraph
-        textLabels = fmap T.pack labels
-        newNodes = zip indices textLabels
-    in
-    G.mkGraph newNodes edges
-
 -- | fgl2PGVNode takes a tripple of an fgl labelled node (Int, a), its
 -- child verteces and parent versitices and returns the PGV Vertex including its type
 fgl2PGVNode :: (Show b) => P.Gr T.Text b -> (G.LNode String, [Int], [Int]) -> Vertex
@@ -195,7 +185,7 @@ fgl2PGV inGraph =
             fglNodeChildList = fmap (G.suc inGraph) (fmap fst fglNodeList)
             fglNodeInfoList = zip3 fglNodeList fglNodeChildList fglNodeParentList
             fglEdgeList = G.labEdges inGraph
-            pgvNodeList = fmap (fgl2PGVNode (stringGraph2TextGraph inGraph)) fglNodeInfoList
+            pgvNodeList = fmap (fgl2PGVNode (PhyP.stringGraph2TextGraph inGraph)) fglNodeInfoList
             pgvEdgeList = fmap fgl2PGVEdge fglEdgeList
         in
         (V.fromList pgvNodeList, V.fromList pgvEdgeList)

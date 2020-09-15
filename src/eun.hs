@@ -65,6 +65,7 @@ import Data.Monoid
 import Data.Char
 import qualified Adams as A
 import qualified PhyloParsers as PhyP
+import qualified ParseCommands as PC
 -- import Debug.Trace
 
 
@@ -690,19 +691,24 @@ main =
     -- Process arguments
     --  csv file first line taxon/leaf names, subsequent lines are distances--must be symmetrical
     args <- getArgs
+    {-
     if length args < 3 then error "Need at least 3 arguments: method (eun or consensus), a minimum percent representation (Integer), and at least one input GraphViz dot or Newick files including two or more graphs"
     else hPutStrLn stderr ("\nReading " ++ show (length args - 2) ++ " input files Output to stdout")
     Prelude.mapM_ (hPutStrLn stderr) $ fmap show (zip [0..(length args-3)] (drop 2 args))
+    -}
 
-    -- nmethod and min percent arg
-    let method = head args
-    let threshold =  (read (args !! 1) :: Int)
+    -- process args
+    -- removed output format since ouotputting both "dot" and "FENewick" files
+    let (method, threshold, _, outputFile, inputFileList) = PC.processCommands args
+
+    -- let method = head args
+    -- let threshold =  (read (args !! 1) :: Int)
 
     hPutStrLn stderr ("\nGraph combination method: " ++ method ++ " at threshold " ++ show threshold ++ "\n")
 
     -- Check for input Newick files and parse to fgl P.Gr graphs
-    fileContentsList <- mapM readFile (drop 2 args)
-    let (forestEnhancedNewickFileTexts, newickFileTexts, dotArgs, newickArgs, forestEnhancedNewickArgs) = sortInputArgs fileContentsList (drop 2 args) ([],[],[],[],[])
+    fileContentsList <- mapM readFile inputFileList -- (drop 2 args)
+    let (forestEnhancedNewickFileTexts, newickFileTexts, dotArgs, newickArgs, forestEnhancedNewickArgs) = sortInputArgs fileContentsList inputFileList ([],[],[],[],[]) -- (drop 2 args) ([],[],[],[],[])
     hPutStrLn stderr ("Graphviz Files " ++ show dotArgs)
     hPutStrLn stderr ("Newick Files " ++ show newickArgs)
     hPutStrLn stderr ("Forest Enhanced Newick Files " ++ show forestEnhancedNewickArgs)
@@ -778,6 +784,7 @@ main =
     let labelledEUNGraph = addGraphLabels eunGraph totallLeafSet
     -- Create EUN Dot file 
     let eunOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledEUNGraph -- eunGraph
+    let eunOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledEUNGraph] False
 
     -- Create strict consensus
     let intersectionBVs = foldl1' intersect (fmap (fmap snd . G.labNodes) processedGraphs)
@@ -788,12 +795,14 @@ main =
     let strictConsensusGraph = makeEUN intersectionNodes intersectionEdges
     let labelledConsensusGraph = addGraphLabels strictConsensusGraph totallLeafSet
     let strictConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledConsensusGraph
+    let strictConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledConsensusGraph] False
 
     -- Creat Adams II consensus
     let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs 
     -- let labelledAdamsII = addGraphLabels adamsIIBV totallLeafSet
     let adamsIIInfo = "There are " ++ show (length $ G.nodes adamsII) ++ " nodes present in Adams II consensus"
     let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams adamsII
+    let adamsIIOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph adamsII] False
 
 
     -- Create thresholdMajority rule Consensus and dot string
@@ -803,6 +812,7 @@ main =
     let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in " ++ (show threshold ++ "%") ++ " of input graphs"
     let labelledTresholdConsensusGraph = addGraphLabels thresholdConsensusGraph totallLeafSet
     let thresholdConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledTresholdConsensusGraph
+    let thresholdConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledTresholdConsensusGraph] False
 
     -- Create threshold EUN and dot string (union nodes from regular EUN above)
     -- need to add filter to remove HTU degreee < 2 
@@ -818,17 +828,22 @@ main =
     let thresholdLabelledEUNGraph = addGraphLabels thresholdEUNGraph totallLeafSet
     -- Create EUN Dot file 
     let thresholdEUNOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams thresholdLabelledEUNGraph -- eunGraph
+    let thresholdEUNOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph thresholdLabelledEUNGraph] False
 
-    -- Output Dot file
-    -- ad enewick and better soecification majority/strict/adams/eun
+    -- Output file
+    let outDOT = outputFile ++ ".dot"
+    let outFEN = outputFile ++ ".fen"
     if method == "eun" then
-        if threshold == 0 then  do {hPutStrLn stderr eunInfo; putStrLn eunOutDotString}
-        else do {hPutStrLn stderr thresholdEUNInfo; putStrLn thresholdEUNOutDotString}
-    else if method == "adams" then do {hPutStrLn stderr adamsIIInfo; putStrLn adamsIIOutDotString}
-    else if method == "strict" then
-        if threshold == 100 then do {hPutStrLn stderr strictConInfo; putStrLn strictConsensusOutDotString}
-        else do {hPutStrLn stderr thresholdConInfo; putStrLn thresholdConsensusOutDotString}
+        if threshold == 0 then  do {hPutStrLn stderr eunInfo; writeFile outDOT eunOutDotString; writeFile outFEN eunOutFENString}
+        else do {hPutStrLn stderr thresholdEUNInfo; writeFile outDOT thresholdEUNOutDotString; writeFile outFEN thresholdEUNOutFENString}
+    else if method == "adams" then do {hPutStrLn stderr adamsIIInfo; writeFile outDOT adamsIIOutDotString; writeFile outFEN adamsIIOutFENString}
+    else if method == "majority" then
+        if threshold == 100 then do {hPutStrLn stderr strictConInfo; writeFile outDOT strictConsensusOutDotString; writeFile outFEN strictConsensusOutFENString}
+        else do {hPutStrLn stderr thresholdConInfo; writeFile outDOT thresholdConsensusOutDotString; writeFile outFEN thresholdConsensusOutFENString}
+    else if method == "strict" then do {hPutStrLn stderr strictConInfo; writeFile outDOT strictConsensusOutDotString; writeFile outFEN strictConsensusOutFENString}
     else error ("Graph combination method " ++ method ++ " is not implemented")
+
+    -- hClose outHandle
     hPutStrLn stderr "\nDone"
 
 
