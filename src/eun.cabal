@@ -41,3 +41,4 @@ executable euncon
 
   other-modules:  Adams
                   PhyloParsers
+                  ParseCommands
