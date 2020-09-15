@@ -1,18 +1,18 @@
 {- |
-Module      :  PhyloParsers.hs 
+Module      :  PhyloParsers.hs
 Description :  module witb parseing functios for commonly used phylogentic files
                 graphs parsed to fgl types.
 Copyright   :  (c) 2020 Ward C. Wheeler, Division of Invertebrate Zoology, AMNH. All rights reserved.
-License     :  
+License     :
 
 Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met: 
+modification, are permitted provided that the following conditions are met:
 
 1. Redistributions of source code must retain the above copyright notice, this
-   list of conditions and the following disclaimer. 
+   list of conditions and the following disclaimer.
 2. Redistributions in binary form must reproduce the above copyright notice,
    this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution. 
+   and/or other materials provided with the distribution.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
@@ -26,7 +26,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 The views and conclusions contained in the software and documentation are those
-of the authors and should not be interpreted as representing official policies, 
+of the authors and should not be interpreted as representing official policies,
 either expressed or implied, of the FreeBSD Project.
 
 Maintainer  :  Ward Wheeler <wheeler@amnh.org>
@@ -36,12 +36,11 @@ Portability :  portable (I hope)
 -}
 
 {-- to do
-    Add fgl <-> Dot
     Add in Fastc
-    TNT later (or simple for now) 
+    TNT later (or simple for now)
 --}
 
-{- 
+{-
 
 Forest Extended Newick defined here as a series of ENewick representations
 within '<' ans '>'. Nodes can be shared among consituent ENewick representations
@@ -129,28 +128,28 @@ module PhyloParsers (forestEnhancedNewickStringList2FGLList,
                      showGraph
                     ) where
 
-import Data.Maybe
-import Data.List
-import qualified Data.Graph.Inductive.Graph as G
+import           Control.Parallel.Strategies
+import           Data.Char                         (isSpace)
+import qualified Data.Graph.Inductive.Graph        as G
 import qualified Data.Graph.Inductive.PatriciaTree as P
-import qualified Data.Text.Lazy as T
-import Data.Char (isSpace)
-import qualified Data.Map.Strict as Map
-import Debug.Trace
-import Control.Parallel.Strategies
+import           Data.List
+import qualified Data.Map.Strict                   as Map
+import           Data.Maybe
+import qualified Data.Text.Lazy                    as T
+import           Debug.Trace
 
-{--  
+{--
     Using Text as ouput for non-standard ascii characters (accents, umlautes etc)
 --}
 
--- | 
+-- |
 -- Map a function over a traversable structure in parallel
 -- Preferred over parMap which is limited to lists
 parmap :: Traversable t => Strategy b -> (a->b) -> t a -> t b
 parmap strat f = withStrategy (parTraversable strat).fmap f
 
 
--- | function for first element of triple 
+-- | function for first element of triple
 fst3 :: (a,b,c) -> a
 fst3 (d,_,_) = d
 
@@ -164,31 +163,31 @@ showGraph inGraph =
       in
       ("Nodes:" ++ nodeString ++ "\n" ++ "Edges: " ++ edgeString)
 
--- | getForestEnhancedNewickList takes String file contents and returns a list 
+-- | getForestEnhancedNewickList takes String file contents and returns a list
 -- of fgl graphs with Text labels for nodes and edges or error if not ForestEnhancedNewick or Newick formats.
 forestEnhancedNewickStringList2FGLList :: T.Text -> [P.Gr T.Text Double]
-forestEnhancedNewickStringList2FGLList fileText = 
+forestEnhancedNewickStringList2FGLList fileText =
     if T.null fileText then error "Empty file string input in getForestEnhancedNewickList"
-    else 
+    else
         let feNewickList = fmap removeNewickSpaces $ fmap removeNewickComments $ divideGraphText fileText
         in
         -- trace ("There are " ++ (show $ length feNewickList) ++ " graphs to convert: " ++ (show feNewickList))
         parmap rdeepseq text2FGLGraph feNewickList
- 
+
 -- | divideGraphText splits multiple Text representations of graphs (Newick styles)
 -- and returns a list of Text graph descriptions
 divideGraphText :: T.Text -> [T.Text]
 divideGraphText inText =
     if T.null inText then []
-    else 
+    else
         let firstChar = T.head inText
         in
-        if firstChar == '<' then 
+        if firstChar == '<' then
             let firstPart = T.snoc (T.takeWhile (/= '>') inText) '>'
                 restPart = T.tail $ T.dropWhile (/= '>') inText
             in
             firstPart : divideGraphText restPart
-        else if firstChar == '(' then 
+        else if firstChar == '(' then
             let firstPart = T.snoc ((T.takeWhile (/= ';')) inText) ';'
                 restPart = T.tail $ (T.dropWhile (/= ';')) inText
             in
@@ -206,43 +205,43 @@ removeNewickComments inString
   in
   T.append firstPart (removeNewickComments secondPart)
 
--- | convertQuotedText takes single quoted Text and removes single quotes and converts spaces 
+-- | convertQuotedText takes single quoted Text and removes single quotes and converts spaces
 -- to underscores
 convertQuotedText :: T.Text -> (T.Text, T.Text)
 convertQuotedText inText =
   if T.null inText then error "Emmpty Text in convertQuotedText"
-  else 
+  else
     let firstPart = T.replace (T.singleton ' ') (T.singleton '_') $ T.takeWhile (/= '\'') (T.tail inText)
         restPart = T.tail $ T.dropWhile (/= '\'') (T.tail inText)
     in
     (firstPart, restPart)
 
--- | removeNewickSpaces removes spaces and converts single quoted strings 
--- with spaces to unquoted strings with underscores replacing spaces: ' blah bleh ' => blah_bleh 
-removeNewickSpaces :: T.Text -> T.Text 
+-- | removeNewickSpaces removes spaces and converts single quoted strings
+-- with spaces to unquoted strings with underscores replacing spaces: ' blah bleh ' => blah_bleh
+removeNewickSpaces :: T.Text -> T.Text
 removeNewickSpaces inText =
   if T.null inText then T.empty
-  else 
-    let firstChar = T.head inText 
+  else
+    let firstChar = T.head inText
     in
-    if firstChar == '\'' then 
+    if firstChar == '\'' then
       let (newText, restText) = convertQuotedText inText
       in
-      T.concat [newText, removeNewickSpaces restText]  
+      T.concat [newText, removeNewickSpaces restText]
     else if isSpace firstChar then removeNewickSpaces $ T.tail inText
     else T.cons firstChar (removeNewickSpaces $ T.tail inText)
 
 -- | text2FGLGraph takes Text of newick (forest or enhanced or OG) and
 -- retns fgl graph representation
 text2FGLGraph :: T.Text -> P.Gr T.Text Double
-text2FGLGraph inGraphText = 
+text2FGLGraph inGraphText =
     if T.null inGraphText then error "Empty graph text in text2FGLGraph"
-    else 
+    else
         let firstChar = T.head inGraphText
             lastChar = T.last inGraphText
         in
         if firstChar == '<' && lastChar == '>' then fENewick2FGL inGraphText -- getFENewick inGraphText
-        else if firstChar == '(' && lastChar == ';' then mergeNetNodesAndEdges $ makeGraphFromPairList $ eNewick2FGL [] []  [(inGraphText, (-1, T.empty))] 
+        else if firstChar == '(' && lastChar == ';' then mergeNetNodesAndEdges $ makeGraphFromPairList $ eNewick2FGL [] []  [(inGraphText, (-1, T.empty))]
         else error ("Graph text not in ForestEnhancedNewick or (Enhanced)Newick format")
 
 
@@ -252,7 +251,7 @@ text2FGLGraph inGraphText =
 fENewick2FGL :: T.Text -> P.Gr T.Text Double
 fENewick2FGL inText =
   if T.null inText then error "Empty graph text in fENewick2FGL"
-    else 
+    else
       -- split eNewicks
       let eNewickTextList = splitForest inText
           startNodeList = replicate (length eNewickTextList) (-1, T.empty)
@@ -267,14 +266,14 @@ fENewick2FGL inText =
           in
           fENewickGraph
 
--- | splitForest takes a Text (string) Forest Enhanced Newick representation and splits into 
+-- | splitForest takes a Text (string) Forest Enhanced Newick representation and splits into
 -- its consituent Extended Newick representations
 splitForest :: T.Text -> [T.Text]
-splitForest inText = 
+splitForest inText =
   if T.null inText then []
-  else if (T.head inText /= '<') || (T.last inText /= '>') then error ("Invalid Forest Extended Newick representation," ++  
+  else if (T.head inText /= '<') || (T.last inText /= '>') then error ("Invalid Forest Extended Newick representation," ++
       " must begin with \'<\'' and end with \'>\' : " ++ (T.unpack inText))
-  else 
+  else
     let partsList = filter (not.(T.null)) $ T.splitOn (T.singleton ';') (T.init $ T.tail inText)
         eNewickList = fmap (`T.append` (T.singleton ';')) partsList
     in
@@ -284,9 +283,9 @@ splitForest inText =
 -- | makeGraphFromPairList takes pair of node list and edge list and returns Graph
 -- | filters to remove place holder node and edges creted during eNewick pass
 makeGraphFromPairList :: [(G.LNode T.Text,G.LEdge Double)] -> P.Gr T.Text Double
-makeGraphFromPairList pairList = 
+makeGraphFromPairList pairList =
   if null pairList then G.empty
-  else 
+  else
     let (nodeList, edgeList) = unzip pairList
     in
     G.mkGraph (filter ((> (-1)).fst) nodeList) (filter ((> (-1)).fst3) edgeList)
@@ -294,14 +293,14 @@ makeGraphFromPairList pairList =
 -- | getBranchLength extracts branch length from Text label and puts in '1' if there is no
 -- branch length--makes sure after last ')'
 getBranchLength :: T.Text -> Double
-getBranchLength inText = 
+getBranchLength inText =
   --trace ("Getting branch length of " ++ show inText) (
   if T.null inText then error "Null text in getBranchLength"
-  else 
+  else
     let a = T.dropWhile (/= ':') $ T.reverse $ T.takeWhile (/= ')') $ T.reverse inText
     in
     if T.null a then 1
-    else if T.length a == 1 then error "Need branch length after \':\')" 
+    else if T.length a == 1 then error "Need branch length after \':\')"
     else (read (T.unpack $ T.tail a) :: Double)
     --)
 
@@ -310,23 +309,23 @@ getBranchLength inText =
 getNodeLabel :: Int -> T.Text -> T.Text
 getNodeLabel nodeNumber inText =
   --trace ("Getting node label of " ++ show inText) (
-  if T.null inText then error "Null text in getNodeLabel" 
-  else 
+  if T.null inText then error "Null text in getNodeLabel"
+  else
     let a = T.takeWhile (/= ':') $ T.reverse $ T.takeWhile (/= ')') $ T.reverse inText
     in
-    if (T.any (==',') a) then (T.append (T.pack "HTU") (T.pack $ show nodeNumber) ) 
-    else if (T.null a) then (T.append (T.pack "HTU") (T.pack $ show nodeNumber)) 
+    if (T.any (==',') a) then (T.append (T.pack "HTU") (T.pack $ show nodeNumber) )
+    else if (T.null a) then (T.append (T.pack "HTU") (T.pack $ show nodeNumber))
     else a
     --)
-            
+
 -- | getLeafInfo takes Text of teminal (no ',') and parses to yeild
 -- either a single leaf label, edge, and edge weight, or two
 -- leaves with labels and costs if there is a network node as parent
 -- need to merge network nodes later
 getLeafInfo :: T.Text -> G.LNode T.Text -> [G.LNode T.Text] -> [(G.LNode T.Text,G.LEdge Double)]
-getLeafInfo leafText parentNode nodeList = 
+getLeafInfo leafText parentNode nodeList =
   if T.null leafText then error "Empty leaf text in getLeafInfo"
-  else 
+  else
     -- simple leaf
     if not (T.any (=='(') leafText) then
       let leafLabel = T.takeWhile (/= ':') leafText
@@ -337,10 +336,10 @@ getLeafInfo leafText parentNode nodeList =
           --preexistingNode = checkForExistingNode leafLabel nodeList
       in
       [(thisNode, thisEdge)]
-    else 
-      let -- leaf parent info 
+    else
+      let -- leaf parent info
           -- (leafLabel)leafParentLabel:leafParentBranchLength
-          leafParentEdgeWeight = getBranchLength leafText   
+          leafParentEdgeWeight = getBranchLength leafText
           leafParentLabel = getNodeLabel (length nodeList) leafText
           leafParentNode = (length nodeList, leafParentLabel)
           leafParentEdge = (fst parentNode, fst leafParentNode, leafParentEdgeWeight)
@@ -359,25 +358,25 @@ getLeafInfo leafText parentNode nodeList =
 -- | getBodyParts takes a Text of a subTree and splits out the group description '(blah)', any node label
 -- and any branch length
 getBodyParts :: T.Text -> Int -> (T.Text, T.Text, Double)
-getBodyParts inRep nodeNumber = 
+getBodyParts inRep nodeNumber =
   if T.null inRep then error "No group to parse in getBodyParts"
-  else 
+  else
       --trace ("In body parts") (
       let subGraphPart =  T.reverse $ T.dropWhile (/= ')') $ T.reverse inRep
           branchLength =  getBranchLength inRep
           subGraphLabel = getNodeLabel nodeNumber inRep
       in
-      --trace (show (subGraphPart, subGraphLabel, branchLength)) 
+      --trace (show (subGraphPart, subGraphLabel, branchLength))
       (subGraphPart, subGraphLabel, branchLength)
       --)
 
--- | getParenBoundedGraph tkaes a Text String and returns  the first graph component 
+-- | getParenBoundedGraph tkaes a Text String and returns  the first graph component
 -- with balanced parens and remainder of Text
 getParenBoundedGraph :: Int -> Int -> T.Text -> T.Text -> (T.Text, T.Text)
 getParenBoundedGraph leftParenCounter rightParenCounter curText inText =
   --trace ("GB " ++ show curText ++ " " ++ show inText) (
   if T.null inText then (curText, inText)
-  else 
+  else
     let firstChar = T.head inText
     in
     if firstChar == '(' then getParenBoundedGraph (leftParenCounter + 1) rightParenCounter (T.snoc curText firstChar) (T.tail inText)
@@ -394,12 +393,12 @@ getParenBoundedGraph leftParenCounter rightParenCounter curText inText =
 -- | getSubComponents takes a Text String and reurns 1 or more subcomponents of graph
 -- scenarios include leaf, leaf in parens, subgraph in parens
 getSubComponents :: T.Text -> [T.Text]
-getSubComponents inText = 
+getSubComponents inText =
   --trace ("gSC " ++ show inText) (
   if T.null inText then []
   else
     if (T.head inText) == ',' then getSubComponents (T.tail inText) -- separator left over from previous run
-    else if (T.head inText) /= '(' then -- simple leaf (no net node labels) 
+    else if (T.head inText) /= '(' then -- simple leaf (no net node labels)
       let subGraph = T.takeWhile (/= ',') inText
           restGraph = T.dropWhile (/= ',') inText
       in
@@ -412,12 +411,12 @@ getSubComponents inText =
 
 -- | getChildren splits a subGraph Text '(blah, blah)' by commas, removing outer parens
 getChildren :: T.Text -> [T.Text]
-getChildren inText = 
+getChildren inText =
   --trace ("In gC") (
   if T.null inText then []
-  else if (T.head inText /= '(') || (T.last inText /= ')') then error ("Invalid Extended Newick component," ++  
+  else if (T.head inText /= '(') || (T.last inText /= ')') then error ("Invalid Extended Newick component," ++
       " must begin with \'(\'' and end with \')\' : " ++ (T.unpack inText))
-  else 
+  else
     -- modify for indegree 1 outdegree 1 and print warning.
     -- let guts = filter (not.(T.null)) $ T.splitOn (T.singleton ',') $ T.init $ T.tail inText
     let guts = T.init $ T.tail inText -- removes leading and training parens
@@ -430,14 +429,14 @@ getChildren inText =
 -- | checkForExistingNode takes a node label and checs the node list for the first
 -- node with the same label and returns a Maybe node, else Nothing
 checkForExistingNode :: T.Text -> [G.LNode T.Text] -> Maybe (G.LNode T.Text)
-checkForExistingNode nodeLabel nodeList = 
+checkForExistingNode nodeLabel nodeList =
   if null nodeList then Nothing
-  else 
+  else
     let matchList = filter ((==nodeLabel).snd) nodeList
     in
     if null matchList then Nothing
     else Just $ head matchList
-    
+
 -- | checkIfLeaf checks text to see if leaf.
 -- if the number of left parens is 1 and right parens 1 and no ',' then leaf
 -- if no left parens and no right paren then leaf
@@ -446,7 +445,7 @@ checkForExistingNode nodeLabel nodeList =
 checkIfLeaf :: T.Text -> Bool
 checkIfLeaf inText =
   if T.null inText then error "Null text to check if leaf in checkIfLeaf"
-  else 
+  else
     let leftParenCount = T.count (T.singleton '(') inText
         rightParenCount = T.count (T.singleton ')') inText
         commaCount = T.count (T.singleton ',') inText
@@ -454,23 +453,23 @@ checkIfLeaf inText =
     if (leftParenCount == 0) && (rightParenCount == 0) && (commaCount == 0) then True
     else if (leftParenCount == 0) && (rightParenCount == 0) && (commaCount > 0) then error ("Comma within leaf label" ++ show inText)
     else if (leftParenCount == 1) && (rightParenCount == 1) && (commaCount == 0) then True
-    else False 
+    else False
 
 -- | eNewick2FGL takes a single Extended Newick (Text) string and returns FGL graph
 -- allows arbitrary in and out degree except for root and leaves
 eNewick2FGL :: [G.LNode T.Text] -> [G.LEdge Double] -> [(T.Text, G.LNode T.Text)] -> [(G.LNode T.Text,G.LEdge Double)]
-eNewick2FGL nodeList edgeList inTextParentList = 
+eNewick2FGL nodeList edgeList inTextParentList =
     if null inTextParentList then []
-    else 
+    else
       let inTextFirst = fst $ head inTextParentList
           parentNode = snd $ head inTextParentList
           isRoot = null nodeList
-      in  
+      in
       -- see if initial call and check format
-      if isRoot && ((T.head inTextFirst /= '(') || (T.last inTextFirst /= ';'))  then error ("Invalid Extended Newick component," ++  
+      if isRoot && ((T.head inTextFirst /= '(') || (T.last inTextFirst /= ';'))  then error ("Invalid Extended Newick component," ++
       " must begin with \'(\'' and end with \')\' : " ++ (T.unpack inTextFirst))
       -- not first call and/or format OK
-      else 
+      else
         let inText = if isRoot then T.takeWhile (/= ';') inTextFirst else inTextFirst -- remove trailing ';' if first (a bit wasteful--but intial check on format)
             isLeaf = checkIfLeaf inText
         in
@@ -478,7 +477,7 @@ eNewick2FGL nodeList edgeList inTextParentList =
       -- is a single leaf
       -- need better could be  series of indegree `1 outdegree 1 nodes to a single leaf with no ','
       -- like (a(b(c(d))))
-        if isLeaf then 
+        if isLeaf then
           -- parse label ala Gary Olsen formalization
           -- since could have reticulate label yeilding two edges and two nodes
           -- Cardona et al 2008  Extended Newick
@@ -487,7 +486,7 @@ eNewick2FGL nodeList edgeList inTextParentList =
               newEdgeList = fmap snd newLeafList
           in
           newLeafList ++ (eNewick2FGL (newNodeList ++ nodeList) (newEdgeList ++ edgeList) (tail inTextParentList))
-        else 
+        else
           -- is subtree assumes start and end with parens '(blah)'
           let (subTree, nodeLabel, edgeWeight) = getBodyParts inText (length nodeList)
               thisNode = (length nodeList, nodeLabel)
@@ -498,12 +497,12 @@ eNewick2FGL nodeList edgeList inTextParentList =
 
           in
           -- trace ("-> " ++ show subTree ++ " " ++ show childTextList ++ " node " ++ show thisNode ++ " edge " ++ show thisEdge) (
-          -- if existingNode == Nothing then 
+          -- if existingNode == Nothing then
           (thisNode, thisEdge) : eNewick2FGL (thisNode : nodeList) (thisEdge : edgeList) (childParentList ++ (tail inTextParentList))
-          
+
 -- | reindexNode takes an offset and adds to the node index
 -- returning new node
-reindexNode :: Int -> G.LNode T.Text -> G.LNode T.Text 
+reindexNode :: Int -> G.LNode T.Text -> G.LNode T.Text
 reindexNode offSet (index, label) = (index + offSet, label)
 
 -- | reindexEdge takes an offset and adds to the two indices of the edge
@@ -511,14 +510,14 @@ reindexNode offSet (index, label) = (index + offSet, label)
 reindexEdge :: Int -> G.LEdge Double -> G.LEdge Double
 reindexEdge offSet (e, u, label) = (e + offSet, u + offSet, label)
 
--- | mergeFGLGraphs takes multiple graphs and merges 
+-- | mergeFGLGraphs takes multiple graphs and merges
 -- nodes and edges via reindexing
 -- just adds progessive offsets from graph node indices as added
 mergeFGLGraphs :: P.Gr T.Text Double -> [P.Gr T.Text Double] -> P.Gr T.Text Double
 mergeFGLGraphs curGraph inGraphList =
   if null inGraphList then curGraph
   else if G.isEmpty curGraph then mergeFGLGraphs (head inGraphList) (tail inGraphList)
-  else 
+  else
     let firstGraph = head inGraphList
         firstNodes = G.labNodes firstGraph
         firstEdges = G.labEdges firstGraph
@@ -529,19 +528,19 @@ mergeFGLGraphs curGraph inGraphList =
     in
     mergeFGLGraphs (G.mkGraph (curNodes ++ newNodes) (curEdges ++ newEdges)) (tail inGraphList)
 
--- | getNodeIndexPair take a list of unique nodes and checks successive nodes and 
+-- | getNodeIndexPair take a list of unique nodes and checks successive nodes and
 -- adds to unique list, also creating a full list of pairs of indicess for non-unique that
 -- can be used as an index map for edges
 -- length of unique list to keep the node indices sequential
 getNodeIndexPair :: [G.LNode T.Text] -> [(Int, Int)] -> [G.LNode T.Text] -> ([G.LNode T.Text], [(Int, Int)])
 getNodeIndexPair uniqueList pairList nodeToCheckList =
   if null nodeToCheckList then (reverse uniqueList, reverse pairList)
-  else 
+  else
     let firstNode@(index, label) = head nodeToCheckList
         matchingNode = checkForExistingNode label uniqueList
     in
     if matchingNode == Nothing then getNodeIndexPair (firstNode : uniqueList) ((index, length uniqueList) : pairList) (tail nodeToCheckList)
-    else 
+    else
       let existingNode = fromJust matchingNode
           newPair = (index, fst existingNode)
       in
@@ -571,14 +570,14 @@ reIndexLNode vertexMap inNode =
     if isNothing newIndex then error ("Error looking up vertex " ++ show index ++ " in " ++ show inNode)
     else (fromJust newIndex, label)
 
--- | mergeNetNodesAndEdges takes a single graph and merges 
+-- | mergeNetNodesAndEdges takes a single graph and merges
 -- nodes and edges due to network nodes and edges
 -- uses checkForExistingNode and creates a map from nodes to reindex edges
 -- needs to be merged first if graphs are combined--or indices will be wrong
 mergeNetNodesAndEdges :: P.Gr T.Text Double -> P.Gr T.Text Double
-mergeNetNodesAndEdges inGraph = 
+mergeNetNodesAndEdges inGraph =
   if G.isEmpty inGraph then G.empty
-  else 
+  else
     let nodeList = G.labNodes inGraph
         (_, nodeIndexPairs) = getNodeIndexPair [] [] nodeList
         nodeMap = Map.fromList nodeIndexPairs
@@ -590,10 +589,10 @@ mergeNetNodesAndEdges inGraph =
 -- | subTreeSize takes a nodeList and retuns the number of leaves that can be
 -- traced back to those nodes (for single just pass list of 1 node)
 -- this used for ordering of groups left (smaller) right (larger)
-subTreeSize :: P.Gr a b -> Int -> [G.LNode a] -> Int 
+subTreeSize :: P.Gr a b -> Int -> [G.LNode a] -> Int
 subTreeSize inGraph counter nodeList =
   if null nodeList then counter
-  else 
+  else
     let firstNode = head nodeList
         children = G.suc inGraph $ fst firstNode
         -- assumes all childrfen have a label (if not--problems)
@@ -618,9 +617,9 @@ getRoots inGraph nodeList =
 -- for each case, the first instance is kept, and the remainders are replaced with the node label
 -- and edge weight if specified (:000)
 removeDuplicateSubtreeText :: (Show b) => T.Text -> [G.LNode T.Text] -> P.Gr T.Text b -> Bool -> T.Text
-removeDuplicateSubtreeText inRep netNodeList fglGraph writeEdgeWeight = 
-  if null netNodeList then inRep 
-  else 
+removeDuplicateSubtreeText inRep netNodeList fglGraph writeEdgeWeight =
+  if null netNodeList then inRep
+  else
     let netNodeText = T.init $ component2Newick fglGraph writeEdgeWeight (head netNodeList)
         -- edge weight already removed or may not match all occurences
         -- I have no idea why--but there are extraneous double quotes that have to be removed.
@@ -631,16 +630,16 @@ removeDuplicateSubtreeText inRep netNodeList fglGraph writeEdgeWeight =
     in
     -- trace ("Removing ? " ++ show isFound ++ " " ++ show nodeText ++ " " ++ show nodeLabel ++ " from " ++ show inRep ++ " in list (" ++ show (length textList) ++ ") " ++ show textList) (
     -- since root cannot be network neither first nor last pieces should be empty
-    if T.null (head textList) || T.null (last textList) then error ("Text representation of graph is incorrect with subtree:\n" ++ (T.unpack nodeText) 
+    if T.null (head textList) || T.null (last textList) then error ("Text representation of graph is incorrect with subtree:\n" ++ (T.unpack nodeText)
       ++ " first or last in representation:\n " ++ (T.unpack inRep))
-    else if length textList == 1 then error ("Text representation of graph is incorrect with subtree:\n" ++ (T.unpack nodeText) 
+    else if length textList == 1 then error ("Text representation of graph is incorrect with subtree:\n" ++ (T.unpack nodeText)
       ++ " not found in representation:\n " ++ (T.unpack inRep))
-    else if length textList == 2 then 
-        trace ("Warning: Network subtree present only once--extraneous use of \'#\' perhaps--") 
+    else if length textList == 2 then
+        trace ("Warning: Network subtree present only once--extraneous use of \'#\' perhaps--")
         inRep
     else -- should be minimum of 3 pieces (two occurences of subtree text removed) is subtree found 2x and not sister to itself (which should never happen)
-      -- edge weights (if they occur) remain the beginning of each text list (after the first) 
-      let firstPart = (head textList) `T.append` nodeText 
+      -- edge weights (if they occur) remain the beginning of each text list (after the first)
+      let firstPart = (head textList) `T.append` nodeText
           secondPart = T.intercalate nodeLabel (tail textList)
       in
       removeDuplicateSubtreeText (firstPart `T.append` secondPart) (tail netNodeList) fglGraph writeEdgeWeight
@@ -651,11 +650,11 @@ removeDuplicateSubtreeText inRep netNodeList fglGraph writeEdgeWeight =
 getDistToRoot :: P.Gr T.Text b -> Int -> G.Node -> Int
 getDistToRoot fglGraph counter inNode  =
   if counter > (length $ G.nodes fglGraph) then error "Cycle likely in graph, path to root larger than number of nodes"
-  else 
+  else
     let parents = G.pre fglGraph inNode
     in
     if length parents == 0 then counter
-    else 
+    else
       let parentPaths = fmap (getDistToRoot fglGraph (counter + 1)) parents
       in
       minimum parentPaths
@@ -665,7 +664,7 @@ getDistToRoot fglGraph counter inNode  =
 fgl2FEN :: (Show b) => Bool -> P.Gr T.Text b -> T.Text
 fgl2FEN writeEdgeWeight fglGraph =
   if G.isEmpty fglGraph then error "Empty graph to convert in fgl2FEN"
-  else 
+  else
     -- get forest roots
     let numRoots = getRoots fglGraph (G.labNodes fglGraph)
         rootGraphSizeList = fmap (subTreeSize fglGraph 0) (fmap (:[]) numRoots)
@@ -673,7 +672,7 @@ fgl2FEN writeEdgeWeight fglGraph =
         rootOrder = sortOn fst rootAndSizes
         fenTextList = fmap (component2Newick fglGraph writeEdgeWeight) (fmap snd rootOrder)
         wholeRep = T.concat $ fmap (`T.append` (T.singleton '\n')) $ fenTextList
-        
+
         -- filter stuff for repeated subtrees
         networkNodeList = filter ((>1).(G.indeg fglGraph)) (G.nodes fglGraph) -- not labNodes becasue of indeg
 
@@ -695,16 +694,16 @@ fgl2FEN writeEdgeWeight fglGraph =
     in
     -- trace ("fgl2FEN " ++ show rootOrder ++ "->" ++ show fenTextList) (
     if (length fenTextList == 1) then wholeRep' -- just a single tree/network
-    else T.snoc (T.cons '<' wholeRep') '>' 
+    else T.snoc (T.cons '<' wholeRep') '>'
     -- )
-    
+
 
 -- | fglList2ForestEnhancedNewickString takes FGL representation of forest and returns
 -- list of Forest Enhanced Newick as a single String
-fglList2ForestEnhancedNewickString :: (Show a) => [P.Gr T.Text a] -> Bool -> String 
+fglList2ForestEnhancedNewickString :: (Show a) => [P.Gr T.Text a] -> Bool -> String
 fglList2ForestEnhancedNewickString inFGLList writeEdgeWeight =
   if null inFGLList then "\n"
-  else 
+  else
     let forestTextList = fmap (`T.append` (T.singleton '\n')) $ parmap rdeepseq (fgl2FEN writeEdgeWeight) inFGLList
         forestListString = T.unpack $ T.concat forestTextList
     in
@@ -714,17 +713,17 @@ fglList2ForestEnhancedNewickString inFGLList writeEdgeWeight =
 component2Newick :: (Show a) => P.Gr T.Text a -> Bool -> G.LNode T.Text -> T.Text
 component2Newick fglGraph writeEdgeWeight (index, label) =
   if G.isEmpty fglGraph then error "Empty graph to convert in component2Newick"
-  else 
+  else
     -- start with root (no in edge weight)
     let -- preorder traversal
         middlePartList= getNewick fglGraph writeEdgeWeight (G.out fglGraph index)
-    in 
+    in
     --trace ("MPL " ++ show middlePartList ++ " " ++ show (G.out fglGraph index)) (
     -- "naked" root
     if null middlePartList then T.concat [T.singleton '(', label, T.singleton ')', T.singleton ';']
     -- single output edge
     else if length middlePartList == 1 then T.concat [T.singleton '(', head middlePartList, T.singleton ')', label, T.singleton ';']
-    else 
+    else
       let middleText = T.intercalate (T.singleton ',') middlePartList
       in
       T.concat [T.singleton '(', middleText, T.singleton ')', label, T.singleton ';']
@@ -742,7 +741,7 @@ getNewick :: (Show a) => P.Gr T.Text a -> Bool -> [G.LEdge a] -> [T.Text]
 getNewick fglGraph writeEdgeWeight  inEdgeList =
   if G.isEmpty fglGraph then [T.empty]
   else if null inEdgeList then []
-  else 
+  else
     let (_, curNodeIndex, edgeLabel) = head inEdgeList
         outEdges = G.out fglGraph curNodeIndex
     in
@@ -751,16 +750,16 @@ getNewick fglGraph writeEdgeWeight  inEdgeList =
       let leafLabel = G.lab fglGraph curNodeIndex
       in
       if leafLabel == Nothing then error "Leaf without label in getNewick"
-      else 
+      else
         let newLabelList = if writeEdgeWeight then [T.concat [fromJust leafLabel, T.singleton ':', T.pack $ show edgeLabel]] else [fromJust leafLabel]
         in
         if length inEdgeList == 1 then newLabelList
         else [T.concat $ newLabelList ++ [T.singleton ','] ++ getNewick fglGraph writeEdgeWeight (tail inEdgeList)]
     -- not a leaf, recurse
-    else 
+    else
       let nodeLabel = makeLabel $ G.lab fglGraph curNodeIndex
           middlePartList = getNewick fglGraph writeEdgeWeight (G.out fglGraph curNodeIndex)
-      in 
+      in
       if length middlePartList == 1 then  -- outdegree 1
         if not writeEdgeWeight then (T.concat [T.singleton '(', head middlePartList, T.singleton ')', nodeLabel]) : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
         else (T.concat [T.singleton '(', head middlePartList, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel]) : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
@@ -769,7 +768,7 @@ getNewick fglGraph writeEdgeWeight  inEdgeList =
         in
         if not writeEdgeWeight then (T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel])  : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
         else (T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel]) : getNewick fglGraph writeEdgeWeight  (tail inEdgeList)
-      
+
 -- |  stringGraph2TextGraph take P.Gr String a and converts to P.Gr Text a
 stringGraph2TextGraph :: P.Gr String b -> P.Gr T.Text b
 stringGraph2TextGraph inStringGraph =

@@ -1,18 +1,18 @@
 {- |
-Module      :  eun.hs 
+Module      :  eun.hs
 Description :  Progam to calcualte Edge Union Network ala Miyagi and Wheeler 2019
                input graphviz dot files and newick
 Copyright   :  (c) 2020 Ward C. Wheeler, Division of Invertebrate Zoology, AMNH. All rights reserved.
-License     :  
+License     :
 
 Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met: 
+modification, are permitted provided that the following conditions are met:
 
 1. Redistributions of source code must retain the above copyright notice, this
-   list of conditions and the following disclaimer. 
+   list of conditions and the following disclaimer.
 2. Redistributions in binary form must reproduce the above copyright notice,
    this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution. 
+   and/or other materials provided with the distribution.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
@@ -26,16 +26,12 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 The views and conclusions contained in the software and documentation are those
-of the authors and should not be interpreted as representing official policies, 
+of the authors and should not be interpreted as representing official policies,
 either expressed or implied, of the FreeBSD Project.
 
 Maintainer  :  Ward Wheeler <wheeler@amnh.org>
 Stability   :  unstable
 Portability :  portable (I hope)
-
-Todo:
-  Add Adams consensus
-  In/Output enewick?
 
 -}
 
@@ -43,29 +39,30 @@ Todo:
 
 module Main where
 
-import System.IO
-import System.Environment
-import Data.List
-import Data.Maybe
-import qualified Data.Vector as V
-import Data.GraphViz as GV
-import Data.GraphViz.Commands.IO
-import Data.GraphViz.Printing
-import Data.GraphViz.Attributes.Complete (Attribute (Label), Label (..))
-import qualified Data.Graph.Inductive.Graph as G
+import qualified Adams                             as A
+import           Control.DeepSeq
+import           Control.Parallel.Strategies
+import qualified Data.Bits                         as B
+import qualified Data.BitVector                    as BV
+import           Data.Char
+import qualified Data.Graph.Inductive.Graph        as G
 import qualified Data.Graph.Inductive.PatriciaTree as P
-import qualified Data.Graph.Inductive.Query.BFS as BFS
-import qualified Data.Text.Lazy as T
-import qualified Data.Bits as B
-import qualified Data.Map.Strict as Map
-import Control.Parallel.Strategies
-import Control.DeepSeq
-import qualified Data.BitVector as BV
-import Data.Monoid
-import Data.Char
-import qualified Adams as A
-import qualified PhyloParsers as PhyP
-import qualified ParseCommands as PC
+import qualified Data.Graph.Inductive.Query.BFS    as BFS
+import           Data.GraphViz                     as GV
+import           Data.GraphViz.Attributes.Complete (Attribute (Label),
+                                                    Label (..))
+import           Data.GraphViz.Commands.IO
+import           Data.GraphViz.Printing
+import           Data.List
+import qualified Data.Map.Strict                   as Map
+import           Data.Maybe
+import           Data.Monoid
+import qualified Data.Text.Lazy                    as T
+import qualified Data.Vector                       as V
+import qualified ParseCommands                     as PC
+import qualified PhyloParsers                      as PhyP
+import           System.Environment
+import           System.IO
 -- import Debug.Trace
 
 
@@ -73,7 +70,7 @@ import qualified ParseCommands as PC
 instance NFData BV.BV where
   rnf bv = BV.size bv `seq` BV.nat bv `seq` ()
 
--- | 
+-- |
 -- Map a function over a traversable structure in parallel
 -- Preferred over parMap which is limited to lists
 parmap :: Traversable t => Strategy b -> (a->b) -> t a -> t b
@@ -102,7 +99,7 @@ setOutDegreeOneBit outDegree nLeaves inBitVect =
 -- so assumes a connected graph--with a single root--not a forest
 getRoots :: P.Gr String String -> [G.Node] -> [Int]
 getRoots inGraph nodeList =
-  if null nodeList then [] --error "Root vertex not found in getRoot"
+  if null nodeList then [] 
   else
     let firstNode = head nodeList
     in
@@ -116,7 +113,7 @@ getUnConnectedNodes inGraph nLeaves nodeList =
   if null nodeList then []
   else
     let firstNode = head nodeList
-        newNode =  (firstNode, B.bit firstNode) -- (firstNode, BV.bitVec nLeaves (2^firstNode))
+        newNode =  (firstNode, B.bit firstNode) 
     in
     if G.deg inGraph firstNode == 0 then
       newNode : getUnConnectedNodes inGraph nLeaves (tail nodeList)
@@ -131,13 +128,11 @@ makeNodeFromChildren inGraph nLeaves leafNodes myVertex =
       let myChildren = G.suc inGraph myVertex
           myChildrenNodes = fmap (makeNodeFromChildren inGraph nLeaves leafNodes) myChildren
           myBV = setOutDegreeOneBit (length myChildren) nLeaves $ BV.or $ fmap (snd . head) myChildrenNodes
-          -- myBV = Main.or (fmap snd $ fmap head myChildrenNodes)
-          -- newLNode = (myVertex, myBV)
       in
       (myVertex, myBV) : concat myChildrenNodes
 
 -- | getNodesFromARoot follows nodes connected to a root.
--- can be fmapped over roots to hit all--should be ok if multiple hits on nodes 
+-- can be fmapped over roots to hit all--should be ok if multiple hits on nodes
 -- since all labeled by BV.BVs  need to fuse them if multiple roots to make sure nodes are consistent
 -- and only one per root--should be ok for multikple jhists of nodes since BVs are from childre
 -- just wasted work.  Should nub after to maeksure only unique (by BV) nodes in list at end
@@ -166,7 +161,7 @@ getLabelledNodes inGraph nLeaves leafNodes  =
     let rootVertexList = getRoots inGraph (G.nodes inGraph)
         htuList = nub $ concatMap (getNodesFromARoot inGraph nLeaves leafNodes) rootVertexList
     in
-     -- this for adding in missing data 
+     -- this for adding in missing data
     let unConnectedNodeList = getUnConnectedNodes inGraph nLeaves (G.nodes inGraph)
     in
     reorderLNodes (htuList ++ unConnectedNodeList)  0
@@ -182,7 +177,7 @@ findLNode vertex lNodeList =
       if a == vertex then (a,b)
       else findLNode vertex (tail lNodeList)
 
--- | reorderLNodes takes a list of nodes and reorders and order based on node vertex number 
+-- | reorderLNodes takes a list of nodes and reorders and order based on node vertex number
 -- n^2 ugh
 reorderLNodes :: [G.LNode BV.BV]  -> Int -> [G.LNode BV.BV]
 reorderLNodes inNodeList index
@@ -201,7 +196,6 @@ relabelEdge allNodesVect inLEdge =
       eNodeBV = snd (allNodesVect V.! e)
       uNodeBV = snd (allNodesVect V.! u)
   in
-  -- trace ((show inLEdge) ++ " " ++ (show (allNodesVect V.! e, allNodesVect V.! u)) ++ " " ++ "=>" ++ (show (e,u,(eNodeBV,uNodeBV))))
   (e,u,(eNodeBV,uNodeBV))
 
 -- | getLeafNumber take Graph and gets nu,ber of leaves (outdegree = 0)
@@ -244,7 +238,7 @@ getLeafList inGraph =
     leafList'
 
 -- | getLeafListNewick returns leaf complement of graph from newick file
--- difference from above is in the leaf label type 
+-- difference from above is in the leaf label type
 getLeafListNewick ::  P.Gr a b -> [G.LNode a]
 getLeafListNewick inGraph =
   if G.isEmpty inGraph then []
@@ -260,7 +254,7 @@ getLeafListNewick inGraph =
     in
     leafList'
 
--- | checkNodesSequential takes a list of nodes and returns booolean 
+-- | checkNodesSequential takes a list of nodes and returns booolean
 -- True if nodes are input with seqeutial numerical indices
 -- False if not--scres up reindexing later which assumes they are successive
 checkNodesSequential :: G.Node -> [G.Node] -> Bool
@@ -268,9 +262,8 @@ checkNodesSequential prevNode inNodeList
   | null inNodeList = True
   | (head inNodeList - prevNode) /= 1 = False
   | otherwise = checkNodesSequential (head inNodeList) (tail inNodeList)
-  -- )
 
--- | reAnnotateGraphs takes parsed graph input and reformats for EUN 
+-- | reAnnotateGraphs takes parsed graph input and reformats for EUN
 reAnnotateGraphs :: P.Gr String String -> P.Gr BV.BV (BV.BV, BV.BV)
 reAnnotateGraphs inGraph =
   -- trace ("Reannotating " ++ (showGraph inGraph)) (
@@ -286,10 +279,8 @@ reAnnotateGraphs inGraph =
         allEdges = fmap (relabelEdge (V.fromList allNodes)) (G.labEdges inGraph)
     in
     -- assign HTU BV via postorder pass.
-    -- trace ("There are " ++ (show nLeaves) ++ " leaves ") -- ++ (show leaves))
     G.mkGraph allNodes allEdges
-    -- )
-
+    
 -- | checkBVs looks at BV.BV of node and retuns FALSE if found True if not
 checkBVs :: BV.BV -> [G.LNode BV.BV] -> Bool
 checkBVs inBV nodeList =
@@ -404,10 +395,10 @@ reIndexLEdge vertexMap inEdge =
 
 -- | reIndexAndAddLeaves takes rawGraphs and total input leaf sets and reindexes node, and edges, and adds
 -- in leaves (with out edges) so that later processing can get bit vectors correct and match from
--- graph to graph. 
+-- graph to graph.
 -- new node set in teh total leaf set form all graphs plus teh local HTUs renumbered up based on added leaves
--- the map contains leaf mappings based on label of leaf, the HTUs extend that map with stright integers.  
--- edges are re-indexed based on that map 
+-- the map contains leaf mappings based on label of leaf, the HTUs extend that map with stright integers.
+-- edges are re-indexed based on that map
 reIndexAndAddLeavesEdges :: [G.LNode String] -> ([G.LNode String], P.Gr a a) -> P.Gr String String
 reIndexAndAddLeavesEdges totallLeafSet (inputLeafList, inGraph) =
   if G.isEmpty inGraph then G.empty
@@ -428,7 +419,7 @@ reIndexAndAddLeavesEdges totallLeafSet (inputLeafList, inGraph) =
           reIndexedEdgeList = fmap (reIndexLEdge vertexMap) (G.labEdges inGraph)
 
           newNodeNumbers = [0..(length totallLeafSet + htuNumber - 1)]
-          attributeList = replicate (length totallLeafSet + htuNumber) "" -- origAttribute 
+          attributeList = replicate (length totallLeafSet + htuNumber) "" -- origAttribute
           newNodeList = zip newNodeNumbers attributeList
       in
       G.mkGraph newNodeList reIndexedEdgeList
@@ -460,7 +451,7 @@ addGraphLabels inGraph totallLeafSet
   G.mkGraph newNodes newEdges
 
 -- | getIntersectionEdges takes a node A and cretes directed edges to each other edge in [B]
--- with rulkesLEdge 
+-- with rulkesLEdge
 --  if A intesect B = empty then no edge
 --  else if A intesect B = B then create edge A->B
 --  else if A intesect B = A then create edge B->A
@@ -494,7 +485,7 @@ getThresholdNodes thresholdInt numLeaves objectListList
       frequencyList = fmap (((/ numGraphs) . fromIntegral) . length) objectGroupList
       fullPairList = zip uniqueList frequencyList
   in
-  -- trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ " " ++ (show frequencyList)) 
+  -- trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ " " ++ (show frequencyList))
   fst <$> filter ((>= threshold). snd) fullPairList
 
 -- |  getThresholdEdges takes a threshold and number of graphs and keeps those unique edges present in the threshold percent or
@@ -542,7 +533,7 @@ removeUnconnectedHTUGraph inGraph leafNodes
   else removeUnconnectedHTUGraph newGraph leafNodes
 
 
--- | sortInputArgs takes a list of arguments (Strings) nd retuns a pair of lists 
+-- | sortInputArgs takes a list of arguments (Strings) nd retuns a pair of lists
 -- of strings that are newick or graphviz dotFile filenames for later parsing
 sortInputArgs :: [String] -> [String] -> ([T.Text],[T.Text],[String],[String],[String]) -> ([T.Text],[T.Text],[String],[String],[String])
 sortInputArgs inContents inArgs (curFEN, curNewick, curDot, curNewFiles, curFENFILES) =
@@ -566,7 +557,7 @@ nodeText2String (index, label) = (index, T.unpack label)
 fglTextB2Text :: (Show b) => P.Gr b Double -> P.Gr b T.Text
 fglTextB2Text inGraph =
   if G.isEmpty inGraph then G.empty
-  else 
+  else
     let labNodes = G.labNodes inGraph
         labEdges = G.labEdges inGraph
         (eList, uList, labelList) = unzip3 labEdges
@@ -575,7 +566,7 @@ fglTextB2Text inGraph =
         newEdges = zip3 eList uList newLabels
     in
     G.mkGraph labNodes newEdges
-        
+
 -- | main driver
 main :: IO ()
 main =
@@ -583,11 +574,6 @@ main =
     -- Process arguments
     --  csv file first line taxon/leaf names, subsequent lines are distances--must be symmetrical
     args <- getArgs
-    {-
-    if length args < 3 then error "Need at least 3 arguments: method (eun or consensus), a minimum percent representation (Integer), and at least one input GraphViz dot or Newick files including two or more graphs"
-    else hPutStrLn stderr ("\nReading " ++ show (length args - 2) ++ " input files Output to stdout")
-    Prelude.mapM_ (hPutStrLn stderr) $ fmap show (zip [0..(length args-3)] (drop 2 args))
-    -}
 
     -- process args
     -- removed output format since ouotputting both "dot" and "FENewick" files
@@ -607,13 +593,6 @@ main =
 
     --New Newick parser
     let newickGraphList = PhyP.forestEnhancedNewickStringList2FGLList (T.concat $ newickFileTexts ++ forestEnhancedNewickFileTexts)
-    {-
-    hPutStrLn stderr ("New Newick inputs:\n")
-    Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph newickGraphList)
-    let outNewickList = PhyP.fglList2ForestEnhancedNewickString newickGraphList True
-    hPutStrLn stderr ("Back to Newick outputs:\n")
-    hPutStrLn stderr outNewickList
-    -}
 
     -- input dot files
     (dotGraphList :: [DotGraph G.Node]) <- mapM readDotFile dotArgs
@@ -622,7 +601,7 @@ main =
     let (inputGraphListDot :: [P.Gr Attributes Attributes]) = fmap dotToGraph  dotGraphList
 
     if ((length dotGraphList) + (length newickGraphList)) < 2 then error ("Need 2 or more input graphs and " ++ (show ((length dotGraphList) + (length newickGraphList))) ++ " have been input")
-    else hPutStrLn stderr ("\nThere are " ++ show ((length dotGraphList) + (length newickGraphList)) ++ " input graphs") 
+    else hPutStrLn stderr ("\nThere are " ++ show ((length dotGraphList) + (length newickGraphList)) ++ " input graphs")
     -- Get leaf sets for each graph (dot and newick separately due to types) and then their union
     -- this to allow for missing data (leaves) in input graphs
     -- and leaves not in same order
@@ -641,17 +620,10 @@ main =
     else error ("Sanity check error(s) on input graphs (False = Failed) Non-sequential node indices: " ++ show (zip [0..(length sanityList - 1)] sanityList))
 
     -- Add in "missing" leaves from individual graphs and renumber edges
-    -- hPutStrLn stderr "Reindexing Dots"
     let fullLeafSetGraphsDot = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsDot inputGraphListDot
-    -- Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph fullLeafSetGraphsDot)
-    -- hPutStrLn stderr "Reindexing Newicks"
     let fullLeafSetGraphsNewick = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsNewick (fmap fglTextB2Text newickGraphList)
-    -- Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph fullLeafSetGraphsNewick)
-    -- hPutStrLn stderr "Joining Graphs"
     let fullLeafSetGraphs = fullLeafSetGraphsDot ++ fullLeafSetGraphsNewick
-    -- Prelude.mapM_ (hPutStrLn stderr) $ fmap show totallLeafSet
-    -- Prelude.mapM_ (hPutStrLn stderr) (fmap showGraph fullLeafSetGraphs)
-
+    
     -- Reformat graphs with appropriate annotations, BV.BVs, etc
     let processedGraphs = parmap rdeepseq reAnnotateGraphs fullLeafSetGraphs -- inputGraphList
 
@@ -674,7 +646,7 @@ main =
     let eunInfo =  "EUN deleted " ++ show (length unionEdges - length (G.labEdges eunGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
     let labelledEUNGraph = addGraphLabels eunGraph totallLeafSet
-    -- Create EUN Dot file 
+    -- Create EUN Dot file
     let eunOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledEUNGraph -- eunGraph
     let eunOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledEUNGraph] False
 
@@ -690,7 +662,7 @@ main =
     let strictConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledConsensusGraph] False
 
     -- Creat Adams II consensus
-    let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs 
+    let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs
     -- let labelledAdamsII = addGraphLabels adamsIIBV totallLeafSet
     let adamsIIInfo = "There are " ++ show (length $ G.nodes adamsII) ++ " nodes present in Adams II consensus"
     let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams adamsII
@@ -707,7 +679,7 @@ main =
     let thresholdConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledTresholdConsensusGraph] False
 
     -- Create threshold EUN and dot string (union nodes from regular EUN above)
-    -- need to add filter to remove HTU degreee < 2 
+    -- need to add filter to remove HTU degreee < 2
     -- need to add second pass EUN after adding HTU->Leaf edges
     let allEdges = addAndReIndexEdges "all" unionNodes (concatMap G.labEdges (tail processedGraphs)) (G.labEdges $ head processedGraphs)
     let thresholdEUNEdges = getThresholdEdges threshold (length processedGraphs) allEdges
@@ -718,7 +690,7 @@ main =
     let thresholdEUNInfo =  "\nThreshold EUN deleted " ++ show (length unionEdges - length (G.labEdges thresholdEUNGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
     let thresholdLabelledEUNGraph = addGraphLabels thresholdEUNGraph totallLeafSet
-    -- Create EUN Dot file 
+    -- Create EUN Dot file
     let thresholdEUNOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams thresholdLabelledEUNGraph -- eunGraph
     let thresholdEUNOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph thresholdLabelledEUNGraph] False
 
@@ -735,7 +707,6 @@ main =
     else if method == "strict" then do {hPutStrLn stderr strictConInfo; writeFile outDOT strictConsensusOutDotString; writeFile outFEN strictConsensusOutFENString}
     else error ("Graph combination method " ++ method ++ " is not implemented")
 
-    -- hClose outHandle
     hPutStrLn stderr "\nDone"
 
 

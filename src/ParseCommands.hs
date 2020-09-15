@@ -1,18 +1,18 @@
 {- |
-Module      :  ParseCommands.hs 
+Module      :  ParseCommands.hs
 Description :  Progam to calcualte Edge Union Network ala Miyagi and Wheeler 2019
                input graphviz dot files and newick
 Copyright   :  (c) 2020 Ward C. Wheeler, Division of Invertebrate Zoology, AMNH. All rights reserved.
-License     :  
+License     :
 
 Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met: 
+modification, are permitted provided that the following conditions are met:
 
 1. Redistributions of source code must retain the above copyright notice, this
-   list of conditions and the following disclaimer. 
+   list of conditions and the following disclaimer.
 2. Redistributions in binary form must reproduce the above copyright notice,
    this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution. 
+   and/or other materials provided with the distribution.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
@@ -26,7 +26,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 The views and conclusions contained in the software and documentation are those
-of the authors and should not be interpreted as representing official policies, 
+of the authors and should not be interpreted as representing official policies,
 either expressed or implied, of the FreeBSD Project.
 
 Maintainer  :  Ward Wheeler <wheeler@amnh.org>
@@ -40,7 +40,7 @@ Todo:
 
 module ParseCommands (processCommands) where
 
-import qualified Data.Text.Lazy as T
+import qualified Data.Text.Lazy         as T
 --import Debug.Trace
 
 -- | processCommands takes a list of strings and returns values of commands for proram execution
@@ -48,14 +48,14 @@ import qualified Data.Text.Lazy as T
 processCommands :: [String] -> (String, Int, String, String, [String])
 processCommands inList =
     if null inList then error ("No input parameters.\nParameters that can be set:"
-        ++ "\n\tMethod=(eun|strict|majority|Adams) "  
+        ++ "\n\tMethod=(eun|strict|majority|Adams) "
         ++ "\n\tThreshold=0-100 "
         -- ++ "\n\tOutFormat=Dot|FENewick"
         ++ "\n\tOutFile=filename"
         ++ "\n\tInput files (may including wildcards) without preceeding \"option=\""
         ++ "\n\tNeed at least a single input graph file (and at least two input graphs)."
         ++ "\n\tDefault values method=EUN, threeshold=100, outformat=dot, outfile=euncon.out\n\n")
-    else 
+    else
         let inTextList = fmap T.pack inList
             inTextListLC = fmap T.toLower inTextList
             inputFileList = getInputFileNames inTextList
@@ -64,19 +64,19 @@ processCommands inList =
             outFormat = getOutputFormat inTextListLC
             outFile =  getOutputFileName (zip inTextListLC inTextList)
         in
-        -- trace (show (method, threshold, outFormat, outFile, inputFileList)) 
+        -- trace (show (method, threshold, outFormat, outFile, inputFileList))
         (method, threshold, outFormat, outFile, inputFileList)
 
 -- | getInputFileNames returns names not including a parameter '='
 getInputFileNames :: [T.Text] -> [String]
-getInputFileNames inTextList = fmap T.unpack $ filter (T.all (/= '=')) inTextList
+getInputFileNames inTextList = T.unpack <$> filter (T.all (/= '=')) inTextList
 
 -- | getMethod returns method value or dedfault otherwise
 -- assumes in lower case
 getMethod :: [T.Text] -> String
-getMethod inTextList = 
+getMethod inTextList =
     if null inTextList then "eun"
-    else 
+    else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
         in
@@ -86,37 +86,37 @@ getMethod inTextList =
 -- | getThreshold returns threshold value or default otherwise
 -- assumes in lower case
 getThreshold :: [T.Text] -> Int
-getThreshold inTextList = 
+getThreshold inTextList =
     if null inTextList then 0 :: Int
-    else 
+    else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
         in
         if firstCommand == T.pack "threshold" then read (T.unpack firstOption) :: Int
-        else getThreshold (tail inTextList) 
+        else getThreshold (tail inTextList)
 
 -- | getOutputFormat returns output file format or default otherwise
 -- assumes in lower case
 getOutputFormat :: [T.Text] -> String
-getOutputFormat inTextList = 
+getOutputFormat inTextList =
     if null inTextList then "dot"
-    else 
+    else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
         in
         if firstCommand == T.pack "outformat" then T.unpack firstOption
-        else getOutputFormat (tail inTextList) 
+        else getOutputFormat (tail inTextList)
 
 -- | getOutputFileName returns output file name or default otherwise
 -- assumes in lower case for command, uses pair so no case convewrsino in files name
 getOutputFileName :: [(T.Text, T.Text)] -> String
-getOutputFileName inTextPairList = 
+getOutputFileName inTextPairList =
     if null inTextPairList then "euncon.out"
-    else 
+    else
         let (textListLC, textList) = head inTextPairList
             firstCommand = T.takeWhile (/= '=') textListLC
             firstOption = T.tail $ T.dropWhile (/= '=') textList
         in
         if firstCommand == T.pack "outfile" then T.unpack firstOption
-        else getOutputFileName (tail inTextPairList) 
+        else getOutputFileName (tail inTextPairList)
 
