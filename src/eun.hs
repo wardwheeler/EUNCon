@@ -507,6 +507,7 @@ getThresholdEdges thresholdInt numGraphsIn objectList
   fst <$> filter ((>= threshold). snd) fullPairList
 
 -- | getUnConnectedHTUs removes unconnected non-leaf nodes from graph
+-- this could be done better by just taking teh vertecces in the used edges
 getUnConnectedHTUs :: P.Gr a b ->  [G.LNode a] -> [G.Node]
 getUnConnectedHTUs inGraph leafNodes
   | null leafNodes = error "Empty leaf node list in getConnectedHTUs"

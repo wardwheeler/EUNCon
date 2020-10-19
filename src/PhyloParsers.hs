@@ -607,7 +607,9 @@ removeDuplicateSubtreeText inRep netNodeList fglGraph writeEdgeWeight =
     let netNodeText = T.init $ component2Newick fglGraph writeEdgeWeight (head netNodeList)
         -- edge weight already removed or may not match all occurences
         -- I have no idea why--but there are extraneous double quotes that have to be removed.
-        nodeText = T.filter (/= '\"') netNodeText
+        nodeText' = T.filter (/= '\"') netNodeText
+        -- checks to see if leaf is indegree > 1
+        nodeText = if not (checkIfLeaf nodeText') then nodeText' else T.filter (/= '(') $ T.filter (/= ')') nodeText'
         nodeLabel = T.reverse $ T.takeWhile (/= ')') $ T.reverse nodeText
         textList = T.splitOn nodeText inRep
         -- isFound = T.isInfixOf nodeText inRep -- (T.pack "(4:1.0)Y#H1") inRep
@@ -616,8 +618,8 @@ removeDuplicateSubtreeText inRep netNodeList fglGraph writeEdgeWeight =
     -- since root cannot be network neither first nor last pieces should be empty
     if T.null (head textList) || T.null (last textList) then error ("Text representation of graph is incorrect with subtree:\n" ++ T.unpack nodeText
       ++ " first or last in representation:\n " ++ T.unpack inRep)
-    else if length textList == 1 then error ("Text representation of graph is incorrect with subtree:\n" ++ T.unpack nodeText
-      ++ " not found in representation:\n " ++ T.unpack inRep)
+    --else if length textList == 1 then error ("Text representation of graph is incorrect with subtree:\n" ++ T.unpack nodeText
+    --  ++ " not found in representation:\n " ++ T.unpack inRep)
     else if length textList == 2 then
         trace "Warning: Network subtree present only once--extraneous use of \'#\' perhaps--"
         inRep

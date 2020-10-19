@@ -54,7 +54,7 @@ processCommands inList =
         ++ "\n\tOutFile=filename"
         ++ "\n\tInput files (may including wildcards) without preceeding \"option=\""
         ++ "\n\tNeed at least a single input graph file (and at least two input graphs)."
-        ++ "\n\tDefault values method=EUN, threeshold=100, outformat=dot, outfile=euncon.out\n\n")
+        ++ "\n\tDefault values method=EUN, threeshold=0, outformat=dot, outfile=euncon.out\n\n")
     else
         let inTextList = fmap T.pack inList
             inTextListLC = fmap T.toLower inTextList
