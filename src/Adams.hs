@@ -49,9 +49,9 @@ import           Data.Maybe
 import qualified Data.Set                          as Set
 import qualified Data.Text.Lazy                    as T
 import qualified Data.Vector                       as V
-import           Debug.Trace
 import qualified PhyloParsers                      as PhyP
 import           System.IO.Unsafe
+-- import           Debug.Trace
 
 data VertexType = Root | Internal | Leaf | Network | Tree
     deriving (Read, Show, Eq) --NFData ?
@@ -142,7 +142,7 @@ makeAdamsII leafNodeList inFGList
       let inPGVList = fmap fgl2PGV inFGList' -- paralle problem with NFData seqParMap myStrategy fgl2PGV inFGList
           adamsPGV = foldl1' getAdamsIIPair inPGVList
       in
-      trace ("\nAdams: " ++ show adamsPGV)
+      -- trace ("\nAdams: " ++ show adamsPGV)
       pgv2FGL adamsPGV
 
 -- | fgl2PGVEdge takes an fgl Labeled edge (e,u,label)

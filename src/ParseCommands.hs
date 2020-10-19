@@ -41,6 +41,7 @@ Todo:
 module ParseCommands (processCommands) where
 
 import qualified Data.Text.Lazy         as T
+import           Debug.Trace
 --import Debug.Trace
 
 -- | processCommands takes a list of strings and returns values of commands for proram execution
@@ -75,7 +76,7 @@ getInputFileNames inTextList = T.unpack <$> filter (T.all (/= '=')) inTextList
 -- assumes in lower case
 getMethod :: [T.Text] -> String
 getMethod inTextList =
-    if null inTextList then "eun"
+    if null inTextList then trace ("Warning: No method specified defaulting to \'eun\'") "eun"
     else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
@@ -87,7 +88,7 @@ getMethod inTextList =
 -- assumes in lower case
 getThreshold :: [T.Text] -> Int
 getThreshold inTextList =
-    if null inTextList then 0 :: Int
+    if null inTextList then trace ("Warning: No threshold specified defaulting to \'0\'")  0 :: Int
     else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
@@ -99,7 +100,7 @@ getThreshold inTextList =
 -- assumes in lower case
 getOutputFormat :: [T.Text] -> String
 getOutputFormat inTextList =
-    if null inTextList then "dot"
+    if null inTextList then trace ("Warning: No output format specified defaulting to \'dot\'") "dot"
     else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
@@ -111,7 +112,7 @@ getOutputFormat inTextList =
 -- assumes in lower case for command, uses pair so no case convewrsino in files name
 getOutputFileName :: [(T.Text, T.Text)] -> String
 getOutputFileName inTextPairList =
-    if null inTextPairList then "euncon.out"
+    if null inTextPairList then trace ("Warning: No output file name specified defaulting to \'euncon.out\'") "euncon.out"
     else
         let (textListLC, textList) = head inTextPairList
             firstCommand = T.takeWhile (/= '=') textListLC
