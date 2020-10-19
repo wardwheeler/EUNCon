@@ -508,6 +508,7 @@ getThresholdEdges thresholdInt numGraphsIn objectList
 
 -- | getUnConnectedHTUs removes unconnected non-leaf nodes from graph
 -- this could be done better by just taking teh vertecces in the used edges
+-- that have a path to the leaf set?
 getUnConnectedHTUs :: P.Gr a b ->  [G.LNode a] -> [G.Node]
 getUnConnectedHTUs inGraph leafNodes
   | null leafNodes = error "Empty leaf node list in getConnectedHTUs"
