@@ -1,4 +1,4 @@
-{- |
+ {- |
 Module      :  eun.hs
 Description :  Progam to calcualte Edge Union Network ala Miyagi and Wheeler 2019
                input graphviz dot files and newick
@@ -63,6 +63,7 @@ import qualified ParseCommands                     as PC
 import qualified PhyloParsers                      as PhyP
 import           System.Environment
 import           System.IO
+import qualified Data.Set                          as S
 -- import Debug.Trace
 
 
@@ -523,6 +524,57 @@ getUnConnectedHTUs inGraph leafNodes
   in
   unConnectedLabHTUList
 
+
+-- | getPostOrderVerts takes a vertex and traverses postorder to root places all visirted nodes in a set of found
+-- vertices. Keeps placing new nodes in recursion list until a root is hit.  If a node is already in found set
+-- it is not added to list of nodes to recurse 
+-- returns set of visited nodes
+getPostOrderVerts :: P.Gr BV.BV (BV.BV, BV.BV) -> S.Set G.Node -> [G.Node] -> S.Set G.Node
+getPostOrderVerts inGraph foundVertSet inVertexList = 
+  if null inVertexList then foundVertSet
+  else 
+    let firstVertex = head inVertexList
+    in
+    if S.member firstVertex foundVertSet then getPostOrderVerts inGraph foundVertSet (tail inVertexList)
+    else 
+      let newFoundSet = S.insert firstVertex foundVertSet 
+          parentVerts = G.pre inGraph firstVertex
+          -- parentIndexList = G.pre inGraph firstVertex
+          -- parentLabelList = fmap fromJust $ fmap (G.lab inGraph) parentIndexList
+          --parentVerts = zip parentIndexList parentLabelList
+      in 
+      getPostOrderVerts inGraph newFoundSet (inVertexList ++ parentVerts)
+
+-- | verticesByPostorder takes a graph and a leaf set and an initially empty found vertex set
+-- as the postorder pass takes place form each leaf, each visited vertex is placed in foundVertSet
+-- when roots are hit, it recurses back untill all paths are traced to a root.
+-- final final rgaph is created and retuyrned from foundVertSet and input list
+-- could have edges unconnected to leaves if consistent edge leading to a subtree with inconsistent configuration
+-- so are filtered out by making sure each vertex in an edge is in the vertex list
+verticesByPostorder :: P.Gr BV.BV (BV.BV, BV.BV) -> [G.LNode BV.BV] ->  S.Set G.Node -> P.Gr BV.BV (BV.BV, BV.BV)
+verticesByPostorder inGraph leafNodes foundVertSet =
+  if G.isEmpty inGraph then error "Empty graph in verticesByPostorder"
+  else if null leafNodes then 
+    let vertexIndexList = S.toList foundVertSet
+        vertexLabelList = fmap fromJust $ fmap (G.lab inGraph) vertexIndexList
+        vertexList = zip vertexIndexList vertexLabelList
+        edgeList = concat $ parmap rdeepseq (verifyEdge vertexIndexList) $ G.labEdges inGraph
+    in G.mkGraph vertexList edgeList
+  else 
+    let firstLeaf = fst $ head leafNodes
+        firstVertices = getPostOrderVerts inGraph foundVertSet [firstLeaf]
+    in
+    verticesByPostorder inGraph (tail leafNodes) (S.union foundVertSet firstVertices)
+
+-- | verifyEdge takes a vertex index list and an edge and checks to see if 
+-- the subtyending vertices are in the vertex list nad returns teh edge as asingleton list
+-- if yes--else empty list (for mapping purposes)
+verifyEdge :: [G.Node] -> G.LEdge (BV.BV, BV.BV) -> [G.LEdge (BV.BV, BV.BV)]
+verifyEdge vertIndexList inEdge@(e,u,_) =
+  if e `notElem` vertIndexList then []
+  else if u `notElem` vertIndexList then []
+  else [inEdge]
+
 -- | removeUnconnectedHTUGraph iteratibvely removes unconnecvted HTU nodes iuntill graph stable
 removeUnconnectedHTUGraph ::  P.Gr BV.BV (BV.BV, BV.BV) -> [G.LNode BV.BV] ->  P.Gr BV.BV (BV.BV, BV.BV)
 removeUnconnectedHTUGraph inGraph leafNodes
@@ -568,7 +620,7 @@ fglTextB2Text inGraph =
         newEdges = zip3 eList uList newLabels
     in
     G.mkGraph labNodes newEdges
-
+  
 -- | main driver
 main :: IO ()
 main =
@@ -672,6 +724,7 @@ main =
 
 
     -- Create thresholdMajority rule Consensus and dot string
+    -- vertex-based CUN-> Majority rule ->Strict
     let thresholdNodes = leafNodes ++ getThresholdNodes threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs)
     let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges thresholdNodes) thresholdNodes
     let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges
@@ -687,8 +740,9 @@ main =
     let thresholdEUNEdges = getThresholdEdges threshold (length processedGraphs) allEdges
     let thresholdEUNGraph' = makeEUN unionNodes thresholdEUNEdges
 
-    -- Remove unnconnected HTU nodes
-    let thresholdEUNGraph = removeUnconnectedHTUGraph thresholdEUNGraph' leafNodes
+    -- Remove unnconnected HTU nodes via postorder pass from leaves
+    let thresholdEUNGraph = verticesByPostorder thresholdEUNGraph' leafNodes S.empty
+    -- let thresholdEUNGraph = removeUnconnectedHTUGraph thresholdEUNGraph' leafNodes
     let thresholdEUNInfo =  "\nThreshold EUN deleted " ++ show (length unionEdges - length (G.labEdges thresholdEUNGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
     let thresholdLabelledEUNGraph = addGraphLabels thresholdEUNGraph totallLeafSet

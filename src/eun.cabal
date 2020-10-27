@@ -22,7 +22,6 @@ executable euncon
                 -Wincomplete-patterns
                 -threaded 
                 -O2
-		            -XBangPatterns
                 -fwrite-ide-info
 
   build-depends:  base >=4.10
@@ -36,10 +35,11 @@ executable euncon
                 , bv
                 
                 
-                
+  default-extensions : BangPatterns                
 
   default-language: Haskell2010
 
   other-modules:  Adams
                   PhyloParsers
                   ParseCommands
+  

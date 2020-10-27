@@ -141,7 +141,7 @@ import           Debug.Trace
 {--
     Using Text as ouput for non-standard ascii characters (accents, umlautes etc)
 --}
-
+  
 -- |
 -- Map a function over a traversable structure in parallel
 -- Preferred over parMap which is limited to lists
@@ -167,7 +167,7 @@ showGraph inGraph =
 -- of fgl graphs with Text labels for nodes and edges or error if not ForestEnhancedNewick or Newick formats.
 forestEnhancedNewickStringList2FGLList :: T.Text -> [P.Gr T.Text Double]
 forestEnhancedNewickStringList2FGLList fileText =
-    if T.null fileText then error "Empty file string input in getForestEnhancedNewickList"
+    if T.null fileText then []
     else
         let feNewickList = fmap (removeNewickSpaces . removeNewickComments) (divideGraphText fileText)
         in
