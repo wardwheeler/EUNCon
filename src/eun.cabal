@@ -23,6 +23,11 @@ executable euncon
                 -threaded 
                 -O2
                 -fwrite-ide-info
+		            -optl-static -optl-pthread
+                -static
+
+  cc-options: -static
+  ld-options: -static -pthread
 
   build-depends:  base >=4.10
                 , containers >=0.6
@@ -43,3 +48,6 @@ executable euncon
                   PhyloParsers
                   ParseCommands
   
+
+
+ 
