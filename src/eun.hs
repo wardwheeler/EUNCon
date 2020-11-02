@@ -631,7 +631,7 @@ main =
 
     -- process args
     -- removed output format since ouotputting both "dot" and "FENewick" files
-    let (method, threshold, _, outputFile, inputFileList) = PC.processCommands args
+    let (method, threshold, outputFormat, outputFile, inputFileList) = PC.processCommands args
 
     -- let method = head args
     -- let threshold =  (read (args !! 1) :: Int)
@@ -754,13 +754,14 @@ main =
     let outDOT = outputFile ++ ".dot"
     let outFEN = outputFile ++ ".fen"
     if method == "eun" then
-        if threshold == 0 then  do {hPutStrLn stderr eunInfo; writeFile outDOT eunOutDotString; writeFile outFEN eunOutFENString}
-        else do {hPutStrLn stderr thresholdEUNInfo; writeFile outDOT thresholdEUNOutDotString; writeFile outFEN thresholdEUNOutFENString}
-    else if method == "adams" then do {hPutStrLn stderr adamsIIInfo; writeFile outDOT adamsIIOutDotString; writeFile outFEN adamsIIOutFENString}
+        --if threshold == 0 then  do {hPutStrLn stderr eunInfo; writeFile outDOT eunOutDotString; writeFile outFEN eunOutFENString}
+        if threshold == 0 then  do {hPutStrLn stderr eunInfo; if outputFormat=="dot" then writeFile outDOT eunOutDotString else writeFile outFEN eunOutFENString}
+        else do {hPutStrLn stderr thresholdEUNInfo; if outputFormat=="dot" then writeFile outDOT thresholdEUNOutDotString else writeFile outFEN thresholdEUNOutFENString}
+    else if method == "adams" then do {hPutStrLn stderr adamsIIInfo; if outputFormat=="dot" then writeFile outDOT adamsIIOutDotString else writeFile outFEN adamsIIOutFENString}
     else if method == "majority" then
-        if threshold == 100 then do {hPutStrLn stderr strictConInfo; writeFile outDOT strictConsensusOutDotString; writeFile outFEN strictConsensusOutFENString}
-        else do {hPutStrLn stderr thresholdConInfo; writeFile outDOT thresholdConsensusOutDotString; writeFile outFEN thresholdConsensusOutFENString}
-    else if method == "strict" then do {hPutStrLn stderr strictConInfo; writeFile outDOT strictConsensusOutDotString; writeFile outFEN strictConsensusOutFENString}
+        if threshold == 100 then do {hPutStrLn stderr strictConInfo; if outputFormat=="dot" then writeFile outDOT strictConsensusOutDotString else writeFile outFEN strictConsensusOutFENString}
+        else do {hPutStrLn stderr thresholdConInfo; if outputFormat=="dot" then writeFile outDOT thresholdConsensusOutDotString else writeFile outFEN thresholdConsensusOutFENString}
+    else if method == "strict" then do {hPutStrLn stderr strictConInfo; if outputFormat=="dot" then writeFile outDOT strictConsensusOutDotString else writeFile outFEN strictConsensusOutFENString}
     else error ("Graph combination method " ++ method ++ " is not implemented")
 
     hPutStrLn stderr "\nDone"
