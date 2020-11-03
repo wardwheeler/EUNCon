@@ -64,7 +64,7 @@ import qualified PhyloParsers                      as PhyP
 import           System.Environment
 import           System.IO
 import qualified Data.Set                          as S
--- import Debug.Trace
+import           Debug.Trace
 
 
 -- NFData instance for parmap/rdeepseq
@@ -127,7 +127,7 @@ makeNodeFromChildren inGraph nLeaves leafNodes myVertex =
   if myVertex < nLeaves then [leafNodes V.! myVertex]
     else
       let myChildren = G.suc inGraph myVertex
-          myChildrenNodes = fmap (makeNodeFromChildren inGraph nLeaves leafNodes) myChildren
+          myChildrenNodes = parmap rdeepseq (makeNodeFromChildren inGraph nLeaves leafNodes) myChildren
           myBV = setOutDegreeOneBit (length myChildren) nLeaves $ BV.or $ fmap (snd . head) myChildrenNodes
       in
       (myVertex, myBV) : concat myChildrenNodes
@@ -145,7 +145,7 @@ getNodesFromARoot inGraph nLeaves leafNodes rootVertex =
 
         -- recurse to children since assume only leaves can be labbeled with BV.BVs
         -- fmap becasue could be > 2 (as in at root)
-        rootChildNewNodes = fmap (makeNodeFromChildren inGraph nLeaves (V.fromList leafNodes)) rootChildVerts
+        rootChildNewNodes = parmap rdeepseq (makeNodeFromChildren inGraph nLeaves (V.fromList leafNodes)) rootChildVerts
 
         rootBV = setOutDegreeOneBit (length rootChildVerts) nLeaves $ BV.or $ fmap (snd . head) rootChildNewNodes
     in
@@ -408,7 +408,7 @@ reIndexAndAddLeavesEdges totallLeafSet (inputLeafList, inGraph) =
       -- create a map between inputLeafSet and totalLeafSet which is the canonical enumeration
       -- then add in local HTU nodes and for map as well
       -- trace ("Original graph: " ++ (showGraph inGraph)) (
-      let correspondanceList = fmap (getLeafLabelMatches inputLeafList) totallLeafSet
+      let correspondanceList = parmap rdeepseq (getLeafLabelMatches inputLeafList) totallLeafSet
           matchList = filter ((/=(-1)).fst) correspondanceList
           --remove order dependancey
           -- htuList = [(length inputLeafList)..(length inputLeafList + htuNumber - 1)]
@@ -470,6 +470,68 @@ getIntersectionEdges bNodeList aNode =
       else if intersection == bBV then (aIndex, bIndex, (aBV, bBV)) : getIntersectionEdges (tail bNodeList) aNode
       else  getIntersectionEdges (tail bNodeList) aNode)
 
+-- combinable tales a list of bitvecotrs and a single bitvector 
+-- and checks each of the first to see if combinable
+-- if A and B == A,B, or 0 then True else False
+-- if True return [bitvector] else []  if not
+combinable :: [BV.BV] -> BV.BV -> [BV.BV]
+combinable bvList bvIn =
+  if null bvList then [bvIn]
+  else 
+    let intersectList = parmap rdeepseq (checkBitVectors bvIn) bvList
+        isCombinable = foldl' (&&) True intersectList
+    in
+    if isCombinable then [bvIn]
+    else []
+    where     
+        checkBitVectors a b = 
+          let c = BV.and [a, b] 
+          in
+          if c == a then True
+          else if c == b then True
+          else if c == 0 then True
+          else False
+
+-- combineComponents takes uses Nelson combinable components to get "intersection" set to
+-- allow for different leave sets will be nm in lengths of two lists of bit vectors
+-- return symmetrical compatible elements (a->b and b->a)
+-- not confident of null behavior.  Idea is that something does not contradict nothing
+combineComponents :: [BV.BV] -> [BV.BV] -> [BV.BV]
+combineComponents firstList secondList =
+  if null firstList && null secondList then []
+  else if null firstList then secondList
+  else if null secondList then firstList
+  else 
+    let firstCombinableSecond = concat $ parmap rdeepseq (combinable secondList) firstList
+        secondCombinableFirst = concat $ parmap rdeepseq (combinable firstList) secondList
+    in
+    nub $ firstCombinableSecond ++ secondCombinableFirst
+
+-- getGraphCompatibleList takes a list of graphs (list of node Bitvectors)
+-- and retuns a list of each graph a bitvector node is compatible with
+-- this isued later for majority rule consensus
+-- each bit vector node will have a list of length 1..number of graphs
+getGraphCompatibleList :: [[BV.BV]] -> BV.BV-> [BV.BV]
+getGraphCompatibleList inBVListList bvToCheck =
+  if null inBVListList then error "Null list of list og bitvectors in getGraphCompatibleList"
+  else 
+    let compatibleList = concat $ parmap rdeepseq ((flip combinable) bvToCheck) inBVListList
+    in 
+    -- trace (show $ length compatibleList)
+    compatibleList
+
+-- getCompatibleList takes a list of graph node bitvectors as lists
+-- retuns a list of lists of bitvectors where the length of the list of the individual bitvectors
+-- is the number of graphs it is compatible with 
+getCompatibleList :: [[BV.BV]] -> [[BV.BV]]
+getCompatibleList inBVListList =
+  if null inBVListList then error "Null list of list og bitvectors in getCompatibleList"
+  else 
+    let uniqueBVList = nub $ concat inBVListList
+        bvCompatibleListList = parmap rdeepseq (getGraphCompatibleList inBVListList) uniqueBVList
+    in
+    bvCompatibleListList
+
 -- |  getThresholdNodes takes a threshold and keeps those unique objects present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
 getThresholdNodes :: Int -> Int -> [[G.LNode BV.BV]] -> [G.LNode BV.BV]
@@ -479,11 +541,14 @@ getThresholdNodes thresholdInt numLeaves objectListList
   | otherwise =
   let threshold = (fromIntegral thresholdInt / 100.0) :: Double
       numGraphs = fromIntegral $ length objectListList
-      objectList = sort $ snd <$> concat objectListList
-      objectGroupList = Data.List.group objectList
+      -- get number compatible or won't work with different leaf numbers
+        --objectList = sort $ snd <$> concat objectListList
+        --objectGroupList = Data.List.group objectList
+      objectGroupList = getCompatibleList (fmap (fmap snd) objectListList)
+
       indexList = [numLeaves..(numLeaves + length objectGroupList - 1)]
       uniqueList = zip indexList (fmap head objectGroupList)
-      frequencyList = fmap (((/ numGraphs) . fromIntegral) . length) objectGroupList
+      frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
       fullPairList = zip uniqueList frequencyList
   in
   -- trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ " " ++ (show frequencyList))
@@ -502,7 +567,7 @@ getThresholdEdges thresholdInt numGraphsIn objectList
       numGraphs = fromIntegral numGraphsIn
       objectGroupList = Data.List.group $ sort objectList
       uniqueList = fmap head objectGroupList
-      frequencyList = fmap (((/ numGraphs) . fromIntegral) . length) objectGroupList
+      frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
       fullPairList = zip uniqueList frequencyList
   in
   fst <$> filter ((>= threshold). snd) fullPairList
@@ -620,7 +685,7 @@ fglTextB2Text inGraph =
         newEdges = zip3 eList uList newLabels
     in
     G.mkGraph labNodes newEdges
-  
+
 -- | main driver
 main :: IO ()
 main =
@@ -675,7 +740,7 @@ main =
 
     -- Add in "missing" leaves from individual graphs and renumber edges
     let fullLeafSetGraphsDot = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsDot inputGraphListDot
-    let fullLeafSetGraphsNewick = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsNewick (fmap fglTextB2Text newickGraphList)
+    let fullLeafSetGraphsNewick = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsNewick (parmap rdeepseq fglTextB2Text newickGraphList)
     let fullLeafSetGraphs = fullLeafSetGraphsDot ++ fullLeafSetGraphsNewick
 
     -- Reformat graphs with appropriate annotations, BV.BVs, etc
@@ -705,7 +770,9 @@ main =
     let eunOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledEUNGraph] False
 
     -- Create strict consensus
-    let intersectionBVs = foldl1' intersect (fmap (fmap snd . G.labNodes) processedGraphs)
+    --"Too strict"  need to be combinable sensu Nelson
+    -- let intersectionBVs = foldl1' intersect (fmap (fmap snd . G.labNodes) processedGraphs)
+    let intersectionBVs = foldl1' combineComponents (fmap (fmap snd . G.labNodes) processedGraphs)
     let numberList = [0..(length intersectionBVs - 1)]
     let intersectionNodes = zip numberList intersectionBVs
     let strictConInfo =  "There are " ++ show (length intersectionNodes) ++ " nodes present in all input graphs"
