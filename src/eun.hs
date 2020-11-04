@@ -757,6 +757,7 @@ main =
     let unionEdges = addAndReIndexEdges "unique" unionNodes (concatMap G.labEdges (tail processedGraphs)) (G.labEdges $ head processedGraphs)
 
     -- Won't keep this--just for comparative purposes
+    -- remove for big graphs?
     let (totalGraph :: P.Gr BV.BV (BV.BV, BV.BV)) = G.mkGraph unionNodes unionEdges
     hPutStrLn stderr ("\nTotal Graph with " ++ show (length $ G.labNodes totalGraph) ++ " nodes and " ++ show (length $ G.labEdges totalGraph) ++ " edges")
 
@@ -769,10 +770,20 @@ main =
     let eunOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledEUNGraph -- eunGraph
     let eunOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledEUNGraph] False
 
+    -- Create Adams II consensus
+    let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs
+    -- let labelledAdamsII = addGraphLabels adamsIIBV totallLeafSet
+    let adamsIIInfo = "There are " ++ show (length $ G.nodes adamsII) ++ " nodes present in Adams II consensus"
+    let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams adamsII
+    let adamsIIOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph adamsII] False
+
+    -- Creatr Ur-Root for strict and majority consensi.  For non-overlapping leaf sets in "super" graphs
+    let urRoot = BV.and $ fmap snd leafNodes
+
     -- Create strict consensus
     --"Too strict"  need to be combinable sensu Nelson
     -- let intersectionBVs = foldl1' intersect (fmap (fmap snd . G.labNodes) processedGraphs)
-    let intersectionBVs = foldl1' combineComponents (fmap (fmap snd . G.labNodes) processedGraphs)
+    let intersectionBVs = (foldl1' combineComponents (fmap (fmap snd . G.labNodes) processedGraphs)) ++ [urRoot]
     let numberList = [0..(length intersectionBVs - 1)]
     let intersectionNodes = zip numberList intersectionBVs
     let strictConInfo =  "There are " ++ show (length intersectionNodes) ++ " nodes present in all input graphs"
@@ -781,14 +792,6 @@ main =
     let labelledConsensusGraph = addGraphLabels strictConsensusGraph totallLeafSet
     let strictConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledConsensusGraph
     let strictConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledConsensusGraph] False
-
-    -- Creat Adams II consensus
-    let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs
-    -- let labelledAdamsII = addGraphLabels adamsIIBV totallLeafSet
-    let adamsIIInfo = "There are " ++ show (length $ G.nodes adamsII) ++ " nodes present in Adams II consensus"
-    let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams adamsII
-    let adamsIIOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph adamsII] False
-
 
     -- Create thresholdMajority rule Consensus and dot string
     -- vertex-based CUN-> Majority rule ->Strict
