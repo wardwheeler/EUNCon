@@ -470,10 +470,18 @@ getIntersectionEdges bNodeList aNode =
           (bIndex, bBV) = head bNodeList
           intersection = BV.and [aBV, bBV]
       in
+      -- only do the directed 1/2 so no nub issues later
+      if (bBV >= aBV) then getIntersectionEdges (tail bNodeList) aNode
+      else if (intersection == 0) then getIntersectionEdges (tail bNodeList) aNode
+      else if intersection == bBV then (aIndex, bIndex, (aBV, bBV)) : getIntersectionEdges (tail bNodeList) aNode
+      else  getIntersectionEdges (tail bNodeList) aNode
+
+      {-
       if (intersection == 0) || (aBV == bBV) then getIntersectionEdges (tail bNodeList) aNode
       else (if intersection == aBV then (bIndex, aIndex, (bBV, aBV)) : getIntersectionEdges (tail bNodeList) aNode
       else if intersection == bBV then (aIndex, bIndex, (aBV, bBV)) : getIntersectionEdges (tail bNodeList) aNode
       else  getIntersectionEdges (tail bNodeList) aNode)
+      -}
 
 -- combinable tales a list of bitvecotrs and a single bitvector 
 -- and checks each of the first to see if combinable
