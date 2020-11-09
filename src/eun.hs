@@ -64,7 +64,7 @@ import qualified PhyloParsers                      as PhyP
 import           System.Environment
 import           System.IO
 import qualified Data.Set                          as S
--- import           Debug.Trace
+import           Debug.Trace
 
 
 -- NFData instance for parmap/rdeepseq
@@ -487,36 +487,42 @@ getIntersectionEdges bNodeList aNode =
 -- and checks each of the first to see if combinable
 -- if A and B == A,B, or 0 then True else False
 -- if True return [bitvector] else []  if not
-combinable :: [BV.BV] -> BV.BV -> [BV.BV]
-combinable bvList bvIn =
-  if null bvList then [bvIn]
-  else 
-    let intersectList = parmap rdeepseq (checkBitVectors bvIn) bvList
-        isCombinable = foldl' (&&) True intersectList
-    in
-    if isCombinable then [bvIn]
+combinable :: String -> [BV.BV] -> BV.BV -> [BV.BV]
+combinable comparison bvList bvIn =
+  if comparison == "identity" then 
+    if null bvList then []
+    else if bvIn `elem` bvList then [bvIn]
     else []
-    where     
-        checkBitVectors a b = 
-          let c = BV.and [a, b] 
-          in
-          if c == a then True
-          else if c == b then True
-          else if c == 0 then True
-          else False
+  else if comparison == "combinable" then -- combinable sensu Nelson 1979
+    if null bvList then [bvIn]
+    else 
+      let intersectList = parmap rdeepseq (checkBitVectors bvIn) bvList
+          isCombinable = foldl' (&&) True intersectList
+      in
+      if isCombinable then [bvIn]
+      else []
+  else error ("Comparison method " ++ comparison ++ " unrecongnized (combinable/identity)")
+      where     
+          checkBitVectors a b = 
+            let c = BV.and [a, b] 
+            in
+            if c == a then True
+            else if c == b then True
+            else if c == 0 then True
+            else False
 
 -- combineComponents takes uses Nelson combinable components to get "intersection" set to
 -- allow for different leave sets will be nm in lengths of two lists of bit vectors
 -- return symmetrical compatible elements (a->b and b->a)
 -- not confident of null behavior.  Idea is that something does not contradict nothing
-combineComponents :: [BV.BV] -> [BV.BV] -> [BV.BV]
-combineComponents firstList secondList =
+combineComponents :: String -> [BV.BV] -> [BV.BV] -> [BV.BV]
+combineComponents comparison firstList secondList =
   if null firstList && null secondList then []
   else if null firstList then secondList
   else if null secondList then firstList
   else 
-    let firstCombinableSecond = concat $ parmap rdeepseq (combinable secondList) firstList
-        secondCombinableFirst = concat $ parmap rdeepseq (combinable firstList) secondList
+    let firstCombinableSecond = concat $ parmap rdeepseq (combinable comparison secondList) firstList
+        secondCombinableFirst = concat $ parmap rdeepseq (combinable comparison firstList) secondList
     in
     nub $ firstCombinableSecond ++ secondCombinableFirst
 
@@ -524,11 +530,11 @@ combineComponents firstList secondList =
 -- and retuns a list of each graph a bitvector node is compatible with
 -- this isued later for majority rule consensus
 -- each bit vector node will have a list of length 1..number of graphs
-getGraphCompatibleList :: [[BV.BV]] -> BV.BV-> [BV.BV]
-getGraphCompatibleList inBVListList bvToCheck =
+getGraphCompatibleList :: String -> [[BV.BV]] -> BV.BV-> [BV.BV]
+getGraphCompatibleList comparison inBVListList bvToCheck =
   if null inBVListList then error "Null list of list og bitvectors in getGraphCompatibleList"
   else 
-    let compatibleList = concat $ parmap rdeepseq ((flip combinable) bvToCheck) inBVListList
+    let compatibleList = concat $ parmap rdeepseq ((flip (combinable comparison)) bvToCheck) inBVListList
     in 
     -- trace (show $ length compatibleList)
     compatibleList
@@ -536,20 +542,20 @@ getGraphCompatibleList inBVListList bvToCheck =
 -- getCompatibleList takes a list of graph node bitvectors as lists
 -- retuns a list of lists of bitvectors where the length of the list of the individual bitvectors
 -- is the number of graphs it is compatible with 
-getCompatibleList :: [[BV.BV]] -> BV.BV -> [[BV.BV]]
-getCompatibleList inBVListList urRoot =
+getCompatibleList :: String -> [[BV.BV]] -> BV.BV -> [[BV.BV]]
+getCompatibleList comparison inBVListList urRoot =
   if null inBVListList then error "Null list of list og bitvectors in getCompatibleList"
   else 
     let uniqueBVList = nub $ urRoot : (concat inBVListList)
-        bvCompatibleListList = parmap rdeepseq (getGraphCompatibleList inBVListList) uniqueBVList
+        bvCompatibleListList = parmap rdeepseq (getGraphCompatibleList comparison inBVListList) uniqueBVList
     in
     bvCompatibleListList
 
 -- |  getThresholdNodes takes a threshold and keeps those unique objects present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
 -- urRoot added to make sure there will be a single connected graph
-getThresholdNodes :: Int -> Int -> [[G.LNode BV.BV]] -> BV.BV -> [G.LNode BV.BV]
-getThresholdNodes thresholdInt numLeaves objectListList urRoot 
+getThresholdNodes :: String -> Int -> Int -> [[G.LNode BV.BV]] -> BV.BV -> [G.LNode BV.BV]
+getThresholdNodes comparison thresholdInt numLeaves objectListList urRoot 
   | thresholdInt < 0 || thresholdInt > 100 = error "Threshold must be in range [0,100]"
   | null objectListList = error "Empty list of object lists in getThresholdObjects"
   | otherwise =
@@ -558,14 +564,17 @@ getThresholdNodes thresholdInt numLeaves objectListList urRoot
       -- get number compatible or won't work with different leaf numbers
         --objectList = sort $ snd <$> concat objectListList
         --objectGroupList = Data.List.group objectList
-      objectGroupList = getCompatibleList (fmap (fmap snd) objectListList) urRoot
+      objectGroupList = if comparison == "combinable" then getCompatibleList comparison (fmap (fmap snd) objectListList) urRoot
+                        else if comparison == "identity" then Data.List.group $ sort $ (snd <$> concat objectListList) ++ (replicate (length objectListList) urRoot)
+                        else error ("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
 
       indexList = [numLeaves..(numLeaves + length objectGroupList - 1)]
       uniqueList = zip indexList (fmap head objectGroupList)
       frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
-      fullPairList = zip uniqueList frequencyList
+      fullPairList = (zip uniqueList frequencyList)
   in
   -- trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ " " ++ (show frequencyList))
+  --trace ("Total " ++ (show $ length fullPairList) ++ " left " ++ (show $ length (fst <$> filter ((>= threshold). snd) fullPairList)))
   fst <$> filter ((>= threshold). snd) fullPairList
 
 -- |  getThresholdEdges takes a threshold and number of graphs and keeps those unique edges present in the threshold percent or
@@ -710,10 +719,7 @@ main =
 
     -- process args
     -- removed output format since ouotputting both "dot" and "FENewick" files
-    let (method, threshold, outputFormat, outputFile, inputFileList) = PC.processCommands args
-
-    -- let method = head args
-    -- let threshold =  (read (args !! 1) :: Int)
+    let !(method, compareMethod, threshold, outputFormat, outputFile, inputFileList) = PC.processCommands args
 
     hPutStrLn stderr ("\nGraph combination method: " ++ method ++ " at threshold " ++ show threshold ++ "\n")
 
@@ -797,7 +803,7 @@ main =
     -- Create strict consensus
     --"Too strict"  need to be combinable sensu Nelson
     -- let intersectionBVs = foldl1' intersect (fmap (fmap snd . G.labNodes) processedGraphs)
-    let intersectionBVs = (foldl1' combineComponents (fmap (fmap snd . G.labNodes) processedGraphs)) `union` [urRoot]
+    let intersectionBVs = (foldl1' (combineComponents compareMethod) (fmap (fmap snd . G.labNodes) processedGraphs)) `union` [urRoot]
     let numberList = [0..(length intersectionBVs - 1)]
     let intersectionNodes = (zip numberList intersectionBVs) -- `union` [(length intersectionBVs, urRoot)]
     let strictConInfo =  "There are " ++ show (length intersectionNodes) ++ " nodes present in all input graphs"
@@ -809,7 +815,7 @@ main =
 
     -- Create thresholdMajority rule Consensus and dot string
     -- vertex-based CUN-> Majority rule ->Strict
-    let thresholdNodes = leafNodes ++ getThresholdNodes threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) urRoot
+    let thresholdNodes = leafNodes ++ getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) urRoot
     --let thresholdNodes = thresholdNodes' `union` [(length thresholdNodes', urRoot)]
     let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges thresholdNodes) thresholdNodes
     let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges)

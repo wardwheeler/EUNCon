@@ -42,31 +42,32 @@ module ParseCommands (processCommands) where
 
 import qualified Data.Text.Lazy         as T
 import           Debug.Trace
---import Debug.Trace
+import Debug.Trace
 
 -- | processCommands takes a list of strings and returns values of commands for proram execution
 -- including defaults
-processCommands :: [String] -> (String, Int, String, String, [String])
+processCommands :: [String] -> (String, String, Int, String, String, [String])
 processCommands inList =
     if null inList then error ("No input parameters.\nParameters that can be set:"
         ++ "\n\tMethod=(eun|strict|majority|Adams) "
         ++ "\n\tThreshold=0-100 "
-        -- ++ "\n\tOutFormat=Dot|FENewick"
+        ++ "\n\tOutFormat=Dot|FENewick"
         ++ "\n\tOutFile=filename"
         ++ "\n\tInput files (may including wildcards) without preceeding \"option=\""
         ++ "\n\tNeed at least a single input graph file (and at least two input graphs)."
-        ++ "\n\tDefault values method=EUN, threeshold=0, outformat=dot, outfile=euncon.out\n\n")
+        ++ "\n\tDefault values reconcile=EUN, compare=combinable threeshold=0, outformat=dot, outfile=euncon.out\n\n")
     else
         let inTextList = fmap T.pack inList
             inTextListLC = fmap T.toLower inTextList
             inputFileList = getInputFileNames inTextList
             method = getMethod inTextListLC
+            compareMethod = getCompareMethod inTextListLC
             threshold = getThreshold inTextListLC
             outFormat = getOutputFormat inTextListLC
             outFile =  getOutputFileName (zip inTextListLC inTextList)
         in
-        -- trace (show (method, threshold, outFormat, outFile, inputFileList))
-        (method, threshold, outFormat, outFile, inputFileList)
+        trace ("\nInput arguments: " ++ (show inList) ++ "\nProgram options: " ++ show (method, compareMethod, threshold, outFormat, outFile, inputFileList))
+        (method, compareMethod, threshold, outFormat, outFile, inputFileList)
 
 -- | getInputFileNames returns names not including a parameter '='
 getInputFileNames :: [T.Text] -> [String]
@@ -76,13 +77,37 @@ getInputFileNames inTextList = T.unpack <$> filter (T.all (/= '=')) inTextList
 -- assumes in lower case
 getMethod :: [T.Text] -> String
 getMethod inTextList =
-    if null inTextList then trace ("Warning: No method specified defaulting to \'eun\'") "eun"
+    if null inTextList then trace ("Warning: No reconcile specified defaulting to \'eun\'") "eun"
     else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
         in
-        if firstCommand == T.pack "method" then T.unpack firstOption
+        if firstCommand == T.pack "reconcile" then 
+            let option = T.unpack firstOption
+            in 
+            if option == "eun" then "eun"
+            else if option == "majority" then "majority"
+            else if option == "strict" then "strict"
+            else error ("Reconcile option \'" ++ option ++ "\' not recognized")
         else getMethod (tail inTextList)
+
+-- | getCompareMethod returns compareMethod value or dedfault otherwise
+-- assumes in lower case
+getCompareMethod :: [T.Text] -> String
+getCompareMethod inTextList =
+
+    if null inTextList then trace ("Warning: No compare specified defaulting to \'combinable\'") "combinable"
+    else
+        let firstCommand = T.takeWhile (/= '=') $ head inTextList
+            firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
+        in
+        if firstCommand == T.pack "compare" then 
+            let option = T.unpack firstOption
+            in 
+            if option == "combinable" then "combinable"
+            else if option == "identity" then"identity"
+            else error ("Compare option \'" ++ option ++ "\' not recognized")
+        else getCompareMethod (tail inTextList)
 
 -- | getThreshold returns threshold value or default otherwise
 -- assumes in lower case
