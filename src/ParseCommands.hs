@@ -92,7 +92,7 @@ getCommandErrorString noMatchList =
     if null noMatchList then ""
     else 
         let (_, firstCommand, firstMatch) = head noMatchList
-            firstError = "By \'" ++ firstCommand ++ "\' did you mean \'" ++ firstMatch ++ "\'?\n"
+            firstError = "\tBy \'" ++ firstCommand ++ "\' did you mean \'" ++ firstMatch ++ "\'?\n"
         in
         firstError ++ (getCommandErrorString $ tail noMatchList)
 
