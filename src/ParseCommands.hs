@@ -35,6 +35,7 @@ Portability :  portable (I hope)
 
 Todo:
   from input file?
+  add edit distance to commands for error
 
 -}
 
@@ -42,14 +43,67 @@ module ParseCommands (processCommands) where
 
 import qualified Data.Text.Lazy         as T
 import           Debug.Trace
-import Debug.Trace
+import           Data.Array
+import           Debug.Trace
+
+-- | function for first element of triple
+fst3 :: (a,b,c) -> a
+fst3 (d,_,_) = d
+
+-- | editDistance is a naive edit distance between two lists
+-- takes two  lists and returns edit distance
+--- from  https://wiki.haskell.org/Edit_distance
+editDistance :: Eq a => [a] -> [a] -> Int
+editDistance xs ys = table ! (m,n)
+    where
+    (m,n) = (length xs, length ys)
+    x     = array (1,m) (zip [1..] xs)
+    y     = array (1,n) (zip [1..] ys)
+    
+    table :: Array (Int,Int) Int
+    table = array bnds [(ij, dist ij) | ij <- range bnds]
+    bnds  = ((0,0),(m,n))
+    
+    dist (0,j) = j
+    dist (i,0) = i
+    dist (i,j) = minimum [table ! (i-1,j) + 1, table ! (i,j-1) + 1,
+        if x ! i == y ! j then table ! (i-1,j-1) else 1 + table ! (i-1,j-1)]
+
+-- | allowedCommandList list of allowable commands
+allowedCommandList :: [String]
+allowedCommandList = ["reconcile", "compare", "threshold", "outformat", "outfile"]
+
+-- | getBestMatch compares input to allowable commands and checks if in list and if not outputs
+-- closest match
+getBestMatch :: (Int, String) -> [String] -> String -> (Int, String)
+getBestMatch curBest@(minDist, _) allowedStrings inString =
+    if null allowedStrings then curBest
+    else 
+        let candidate =  head allowedStrings
+            candidateEditCost = editDistance candidate inString
+        in
+        if candidateEditCost == 0 then (0, candidate)
+        else if candidateEditCost < minDist then getBestMatch (candidateEditCost, candidate) (tail allowedStrings) inString
+        else getBestMatch curBest (tail allowedStrings) inString
+
+-- | getCommandErrorString takes list of non zero edits to allowed commands and reurns meaningful error string
+getCommandErrorString :: [(Int, String, String)] -> String
+getCommandErrorString noMatchList = 
+    if null noMatchList then ""
+    else 
+        let (_, firstCommand, firstMatch) = head noMatchList
+            firstError = "By \'" ++ firstCommand ++ "\' did you mean \'" ++ firstMatch ++ "\'?\n"
+        in
+        firstError ++ (getCommandErrorString $ tail noMatchList)
 
 -- | processCommands takes a list of strings and returns values of commands for proram execution
 -- including defaults
+-- checks commands for misspellings
 processCommands :: [String] -> (String, String, Int, String, String, [String])
 processCommands inList =
     if null inList then error ("No input parameters.\nParameters that can be set:"
-        ++ "\n\tMethod=(eun|strict|majority|Adams) "
+        ++ "\n\tReconcile=(eun|strict|majority|Adams) "
+        ++ "\n\tCompare=combinable|exact "
         ++ "\n\tThreshold=0-100 "
         ++ "\n\tOutFormat=Dot|FENewick"
         ++ "\n\tOutFile=filename"
@@ -59,6 +113,11 @@ processCommands inList =
     else
         let inTextList = fmap T.pack inList
             inTextListLC = fmap T.toLower inTextList
+            commandList = filter (T.any (== '=')) inTextListLC
+            stringCommands = (fmap T.unpack $ fmap (T.takeWhile (/= '=')) commandList)
+            (editCostList, matchList) = unzip $ fmap (getBestMatch ((maxBound :: Int) ,"no suggestion") allowedCommandList) stringCommands
+            commandMatch = zip3 editCostList stringCommands matchList
+            notMatchedList = filter ((>0).fst3) commandMatch
             inputFileList = getInputFileNames inTextList
             method = getMethod inTextListLC
             compareMethod = getCompareMethod inTextListLC
@@ -66,8 +125,11 @@ processCommands inList =
             outFormat = getOutputFormat inTextListLC
             outFile =  getOutputFileName (zip inTextListLC inTextList)
         in
-        trace ("\nInput arguments: " ++ (show inList) ++ "\nProgram options: " ++ show (method, compareMethod, threshold, outFormat, outFile, inputFileList))
-        (method, compareMethod, threshold, outFormat, outFile, inputFileList)
+        if length notMatchedList ==  0 then 
+            trace ("\nInput arguments: " ++ (show inList) ++ "\nProgram options: " ++ show (method, compareMethod, threshold, outFormat, outFile, inputFileList))
+            (method, compareMethod, threshold, outFormat, outFile, inputFileList)
+        else error ("\n\nError(s) in command specification (case insensitive):\n" ++ getCommandErrorString notMatchedList)
+
 
 -- | getInputFileNames returns names not including a parameter '='
 getInputFileNames :: [T.Text] -> [String]

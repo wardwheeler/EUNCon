@@ -38,6 +38,7 @@ executable euncon
                 , deepseq
                 , vector
                 , bv
+                , array
                 
                 
   default-extensions : BangPatterns                
