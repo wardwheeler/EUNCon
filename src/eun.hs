@@ -202,14 +202,28 @@ relabelEdge allNodesVect inLEdge =
 -- | changeLabelEdge labels edges by descendent vertex label
 -- assumes leaves first then vertices labeled in order
 -- offset for numLeaves assumes only labeling non-leaves so smaller set
-changeLabelEdge :: Int -> V.Vector a -> [G.LEdge b] -> [G.LEdge a]
+-- assumes that if an "urroot" has been added via `union` then it is last vertex
+-- this for condition where root has been added to majority consensus tree
+changeLabelEdge :: Int -> V.Vector Double -> [G.LEdge b] -> [G.LEdge Double]
 changeLabelEdge numLeaves freqVect edgeList = 
   if null edgeList then []
   else 
     let (e,u,_) = head edgeList
+        newLabel = if u < numLeaves then 1 else if (u - numLeaves) >= V.length freqVect then 1 else freqVect V.! (u - numLeaves)
     in 
-    (e,u, freqVect V.! (u - numLeaves)) : changeLabelEdge numLeaves freqVect (tail edgeList)
+    -- trace (show (e,u) ++ " " ++ (show (u - numLeaves)) ++ " " ++ show freqVect) -- ++ " " ++ show newLabel)
+    (e,u, newLabel) : changeLabelEdge numLeaves freqVect (tail edgeList)
   
+-- | addEdgeFrequenciesToGraph takes a greaph and edhge frequencies and relables edges
+-- with node frequencies of discedendet node
+addEdgeFrequenciesToGraph :: (Show b) => P.Gr a b -> Int -> [Double] -> P.Gr a Double
+addEdgeFrequenciesToGraph inGraph numLeaves freqList =
+  let inNodes = G.labNodes inGraph
+      inEdges = G.labEdges inGraph
+      newEdges = changeLabelEdge numLeaves (V.fromList freqList) inEdges
+  in
+  -- trace (show inEdges)
+  G.mkGraph inNodes newEdges
 
 -- | getLeafNumber take Graph and gets nu,ber of leaves (outdegree = 0)
 getLeafNumber :: P.Gr BV.BV (BV.BV, BV.BV) -> Int
@@ -833,9 +847,10 @@ main =
     let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges thresholdNodes) thresholdNodes
     let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges)
     let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in " ++ (show threshold ++ "%") ++ " of input graphs"
-    let labelledTresholdConsensusGraph = addGraphLabels thresholdConsensusGraph totallLeafSet
+    let labelledTresholdConsensusGraph' = addGraphLabels thresholdConsensusGraph totallLeafSet
+    let labelledTresholdConsensusGraph = addEdgeFrequenciesToGraph labelledTresholdConsensusGraph' (length leafNodes) nodeFreqs
     let thresholdConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledTresholdConsensusGraph
-    let thresholdConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledTresholdConsensusGraph] False False
+    let thresholdConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledTresholdConsensusGraph] True False
 
     -- Create threshold EUN and dot string (union nodes from regular EUN above)
     -- need to add filter to remove HTU degreee < 2
@@ -849,10 +864,11 @@ main =
     -- let thresholdEUNGraph = removeUnconnectedHTUGraph thresholdEUNGraph' leafNodes
     let thresholdEUNInfo =  "\nThreshold EUN deleted " ++ show (length unionEdges - length (G.labEdges thresholdEUNGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
-    let thresholdLabelledEUNGraph = addGraphLabels thresholdEUNGraph totallLeafSet
+    let thresholdLabelledEUNGraph' = addGraphLabels thresholdEUNGraph totallLeafSet
+    let thresholdLabelledEUNGraph = addEdgeFrequenciesToGraph thresholdLabelledEUNGraph' (length leafNodes) edgeFreqs
     -- Create EUN Dot file
     let thresholdEUNOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams thresholdLabelledEUNGraph -- eunGraph
-    let thresholdEUNOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph thresholdLabelledEUNGraph] False False
+    let thresholdEUNOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph thresholdLabelledEUNGraph] True False
 
     -- Output file
     let outDOT = outputFile ++ ".dot"

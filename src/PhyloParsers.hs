@@ -702,17 +702,19 @@ component2Newick fglGraph writeEdgeWeight writeNodeLable (index, label) =
   else
     -- start with root (no in edge weight)
     let -- preorder traversal
-        middlePartList= getNewick fglGraph writeEdgeWeight writeNodeLable (G.out fglGraph index)
+        middlePartList = getNewick fglGraph writeEdgeWeight writeNodeLable (G.out fglGraph index)
+        label' = if writeNodeLable then label else T.empty
     in
     --trace ("MPL " ++ show middlePartList ++ " " ++ show (G.out fglGraph index)) (
     -- "naked" root
     if null middlePartList then T.concat [T.singleton '(', label, T.singleton ')', T.singleton ';']
     -- single output edge
-    else if length middlePartList == 1 then T.concat [T.singleton '(', head middlePartList, T.singleton ')', label, T.singleton ';']
+    else if length middlePartList == 1 then 
+      T.concat [T.singleton '(', head middlePartList, T.singleton ')', label', T.singleton ';']
     else
       let middleText = T.intercalate (T.singleton ',') middlePartList
       in
-      T.concat [T.singleton '(', middleText, T.singleton ')', label, T.singleton ';']
+      T.concat [T.singleton '(', middleText, T.singleton ')', label', T.singleton ';']
     --)
 
 
