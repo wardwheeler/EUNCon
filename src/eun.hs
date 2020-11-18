@@ -684,12 +684,13 @@ sortInputArgs inContents inArgs (curFEN, curNewick, curDot, curNewFiles, curFENF
     let firstFileName = head inArgs
         firstContents = filter (not . isSpace) $ head inContents
     in
-    if head firstContents == '(' then
+    if head firstContents == '(' then -- Newick/EnhancedNewick
       sortInputArgs (tail inContents) (tail inArgs) (curFEN, T.pack firstContents : curNewick, curDot, firstFileName : curNewFiles, curFENFILES)
-    else if head firstContents == '<' then
+    else if head firstContents == '<' then -- ForestEnhancedNewick
       sortInputArgs (tail inContents) (tail inArgs) (T.pack firstContents : curFEN, curNewick, curDot, curNewFiles, firstFileName : curFENFILES)
-    else -- assumes DOT
+    else if (head firstContents == 's') || (head firstContents == 'g') || (head firstContents == 'd') then --Dot
       sortInputArgs (tail inContents) (tail inArgs) (curFEN, curNewick, firstFileName : curDot, curNewFiles, curFENFILES)
+    else error ("Input file " ++ firstFileName ++ " does not appear to be Newick, Enhanced Newick, Forest Enhanced Newick or dot format ")
 
 -- | nodeText2String takes a node with text label and returns a node with String label
 nodeText2String :: G.LNode T.Text -> G.LNode String
@@ -713,12 +714,12 @@ fglTextB2Text inGraph =
 main :: IO ()
 main =
   do
+    let splash = "\nEUNCon version 0.9\nCopyright(C) 2020 Ward Wheeler and The American Museum of Natural History\n"
+    let splash2 = "EUNCon comes with ABSOLUTELY NO WARRANTY; This is free software, and may be \nredistributed "
+    let splash3 = "under the GNU General Public License Version 2, June 1991.\n"
+    hPutStrLn stderr (splash ++ splash2 ++ splash3)
     -- Process arguments
-    --  csv file first line taxon/leaf names, subsequent lines are distances--must be symmetrical
     args <- getArgs
-
-    -- process args
-    -- removed output format since ouotputting both "dot" and "FENewick" files
     let !(method, compareMethod, threshold, outputFormat, outputFile, inputFileList) = PC.processCommands args
 
     hPutStrLn stderr ("\nGraph combination method: " ++ method ++ " at threshold " ++ show threshold ++ "\n")
@@ -787,21 +788,20 @@ main =
     let labelledEUNGraph = addGraphLabels eunGraph totallLeafSet
     -- Create EUN Dot file
     let eunOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledEUNGraph -- eunGraph
-    let eunOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledEUNGraph] False
+    let eunOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledEUNGraph] False False
 
     -- Create Adams II consensus
     let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs
     -- let labelledAdamsII = addGraphLabels adamsIIBV totallLeafSet
     let adamsIIInfo = "There are " ++ show (length $ G.nodes adamsII) ++ " nodes present in Adams II consensus"
     let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams adamsII
-    let adamsIIOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph adamsII] False
+    let adamsIIOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph adamsII] False False
 
     -- Creatr Ur-Root for strict and majority consensi.  For non-overlapping leaf sets in "super" graphs
     let urRoot = BV.or $ concat (fmap (fmap snd . G.labNodes) processedGraphs)
     --hPutStrLn stderr ("\nurRoot: " ++ BV.showBin urRoot) 
 
     -- Create strict consensus
-    --"Too strict"  need to be combinable sensu Nelson
     -- let intersectionBVs = foldl1' intersect (fmap (fmap snd . G.labNodes) processedGraphs)
     let intersectionBVs = (foldl1' (combineComponents compareMethod) (fmap (fmap snd . G.labNodes) processedGraphs)) `union` [urRoot]
     let numberList = [0..(length intersectionBVs - 1)]
@@ -811,7 +811,7 @@ main =
     let strictConsensusGraph = makeEUN intersectionNodes intersectionEdges (G.mkGraph intersectionNodes intersectionEdges)
     let labelledConsensusGraph = addGraphLabels strictConsensusGraph totallLeafSet
     let strictConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledConsensusGraph
-    let strictConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledConsensusGraph] False
+    let strictConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledConsensusGraph] False False
 
     -- Create thresholdMajority rule Consensus and dot string
     -- vertex-based CUN-> Majority rule ->Strict
@@ -822,7 +822,7 @@ main =
     let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in " ++ (show threshold ++ "%") ++ " of input graphs"
     let labelledTresholdConsensusGraph = addGraphLabels thresholdConsensusGraph totallLeafSet
     let thresholdConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledTresholdConsensusGraph
-    let thresholdConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledTresholdConsensusGraph] False
+    let thresholdConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledTresholdConsensusGraph] False False
 
     -- Create threshold EUN and dot string (union nodes from regular EUN above)
     -- need to add filter to remove HTU degreee < 2
@@ -839,7 +839,7 @@ main =
     let thresholdLabelledEUNGraph = addGraphLabels thresholdEUNGraph totallLeafSet
     -- Create EUN Dot file
     let thresholdEUNOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams thresholdLabelledEUNGraph -- eunGraph
-    let thresholdEUNOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph thresholdLabelledEUNGraph] False
+    let thresholdEUNOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph thresholdLabelledEUNGraph] False False
 
     -- Output file
     let outDOT = outputFile ++ ".dot"
@@ -849,7 +849,7 @@ main =
         if threshold == 0 then  do {hPutStrLn stderr eunInfo; if outputFormat=="dot" then writeFile outDOT eunOutDotString else writeFile outFEN eunOutFENString}
         else do {hPutStrLn stderr thresholdEUNInfo; if outputFormat=="dot" then writeFile outDOT thresholdEUNOutDotString else writeFile outFEN thresholdEUNOutFENString}
     else if method == "adams" then do {hPutStrLn stderr adamsIIInfo; if outputFormat=="dot" then writeFile outDOT adamsIIOutDotString else writeFile outFEN adamsIIOutFENString}
-    else if method == "majority" then
+    else if (method == "majority") || (method == "cun") then
         if threshold == 100 then do {hPutStrLn stderr strictConInfo; if outputFormat=="dot" then writeFile outDOT strictConsensusOutDotString else writeFile outFEN strictConsensusOutFENString}
         else do {hPutStrLn stderr thresholdConInfo; if outputFormat=="dot" then writeFile outDOT thresholdConsensusOutDotString else writeFile outFEN thresholdConsensusOutFENString}
     else if method == "strict" then do {hPutStrLn stderr strictConInfo; if outputFormat=="dot" then writeFile outDOT strictConsensusOutDotString else writeFile outFEN strictConsensusOutFENString}

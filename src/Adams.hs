@@ -156,7 +156,7 @@ fgl2PGVNode :: (Show b) => P.Gr T.Text b -> (G.LNode String, [Int], [Int]) -> Ve
 fgl2PGVNode inGraph ((index, inLabel), childList, parentList) =
     --if null label then error "Null node label in fgl2PGVNode"
     --else
-    let guts = T.init $ PhyP.component2Newick inGraph False (index, T.pack inLabel)
+    let guts = T.init $ PhyP.component2Newick inGraph False False (index, T.pack inLabel)
         label = if PhyP.checkIfLeaf guts then T.unpack $ T.tail $ T.init guts else T.unpack guts
     in
     if null parentList then (label, childList, parentList, Root)

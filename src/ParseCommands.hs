@@ -101,14 +101,14 @@ getCommandErrorString noMatchList =
 -- checks commands for misspellings
 processCommands :: [String] -> (String, String, Int, String, String, [String])
 processCommands inList =
-    if null inList then error ("No input parameters.\nParameters that can be set:"
-        ++ "\n\tReconcile=(eun|strict|majority|Adams) "
+    if null inList then error ("\n\nError--No input parameters.\nParameters that can be set:"
+        ++ "\n\tReconcile=(eun|cun|strict|majority|Adams) "
         ++ "\n\tCompare=combinable|exact "
         ++ "\n\tThreshold=0-100 "
         ++ "\n\tOutFormat=Dot|FENewick"
         ++ "\n\tOutFile=filename"
-        ++ "\n\tInput files (may including wildcards) without preceeding \"option=\""
-        ++ "\n\tNeed at least a single input graph file (and at least two input graphs)."
+        ++ "\n\tInput files (may include wildcards) without preceeding \"option=\""
+        ++ "\n\tRequires at least a single input graph file (and at least two input graphs)."
         ++ "\n\tDefault values reconcile=EUN, compare=combinable threeshold=0, outformat=dot, outfile=euncon.out\n\n")
     else
         let inTextList = fmap T.pack inList
@@ -121,7 +121,7 @@ processCommands inList =
             inputFileList = getInputFileNames inTextList
             method = getMethod inTextListLC
             compareMethod = getCompareMethod inTextListLC
-            threshold = getThreshold inTextListLC
+            threshold = if method == "cun" then 100 else getThreshold inTextListLC
             outFormat = getOutputFormat inTextListLC
             outFile =  getOutputFileName (zip inTextListLC inTextList)
         in
@@ -148,6 +148,7 @@ getMethod inTextList =
             let option = T.unpack firstOption
             in 
             if option == "eun" then "eun"
+            else if option == "cun" then "cun"
             else if option == "majority" then "majority"
             else if option == "strict" then "strict"
             else error ("Reconcile option \'" ++ option ++ "\' not recognized")
