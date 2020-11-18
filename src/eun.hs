@@ -199,6 +199,18 @@ relabelEdge allNodesVect inLEdge =
   in
   (e,u,(eNodeBV,uNodeBV))
 
+-- | changeLabelEdge labels edges by descendent vertex label
+-- assumes leaves first then vertices labeled in order
+-- offset for numLeaves assumes only labeling non-leaves so smaller set
+changeLabelEdge :: Int -> V.Vector a -> [G.LEdge b] -> [G.LEdge a]
+changeLabelEdge numLeaves freqVect edgeList = 
+  if null edgeList then []
+  else 
+    let (e,u,_) = head edgeList
+    in 
+    (e,u, freqVect V.! (u - numLeaves)) : changeLabelEdge numLeaves freqVect (tail edgeList)
+  
+
 -- | getLeafNumber take Graph and gets nu,ber of leaves (outdegree = 0)
 getLeafNumber :: P.Gr BV.BV (BV.BV, BV.BV) -> Int
 getLeafNumber inGraph =
@@ -554,7 +566,7 @@ getCompatibleList comparison inBVListList urRoot =
 -- |  getThresholdNodes takes a threshold and keeps those unique objects present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
 -- urRoot added to make sure there will be a single connected graph
-getThresholdNodes :: String -> Int -> Int -> [[G.LNode BV.BV]] -> BV.BV -> [G.LNode BV.BV]
+getThresholdNodes :: String -> Int -> Int -> [[G.LNode BV.BV]] -> BV.BV -> ([G.LNode BV.BV], [Double])
 getThresholdNodes comparison thresholdInt numLeaves objectListList urRoot 
   | thresholdInt < 0 || thresholdInt > 100 = error "Threshold must be in range [0,100]"
   | null objectListList = error "Empty list of object lists in getThresholdObjects"
@@ -575,13 +587,13 @@ getThresholdNodes comparison thresholdInt numLeaves objectListList urRoot
   in
   -- trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ " " ++ (show frequencyList))
   --trace ("Total " ++ (show $ length fullPairList) ++ " left " ++ (show $ length (fst <$> filter ((>= threshold). snd) fullPairList)))
-  fst <$> filter ((>= threshold). snd) fullPairList
+  (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> filter ((>= threshold). snd) fullPairList)
 
 -- |  getThresholdEdges takes a threshold and number of graphs and keeps those unique edges present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
 -- modified from getThresholdNodes due to type change in edges
 -- used and number from numleaves so can use BV
-getThresholdEdges :: (Show a, Ord a) => Int -> Int -> [a] -> [a]
+getThresholdEdges :: (Show a, Ord a) => Int -> Int -> [a] -> ([a], [Double])
 getThresholdEdges thresholdInt numGraphsIn objectList
   | thresholdInt < 0 || thresholdInt > 100 = error "Threshold must be in range [0,100]"
   | null objectList = error "Empty list of object lists in getThresholdEdges"
@@ -593,7 +605,7 @@ getThresholdEdges thresholdInt numGraphsIn objectList
       frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
       fullPairList = zip uniqueList frequencyList
   in
-  fst <$> filter ((>= threshold). snd) fullPairList
+  (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> filter ((>= threshold). snd) fullPairList)
 
 -- | getUnConnectedHTUs removes unconnected non-leaf nodes from graph
 -- this could be done better by just taking teh vertecces in the used edges
@@ -815,7 +827,8 @@ main =
 
     -- Create thresholdMajority rule Consensus and dot string
     -- vertex-based CUN-> Majority rule ->Strict
-    let thresholdNodes = leafNodes ++ getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) urRoot
+    let (thresholdNodes', nodeFreqs) = getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) urRoot
+    let thresholdNodes = leafNodes ++ thresholdNodes'
     --let thresholdNodes = thresholdNodes' `union` [(length thresholdNodes', urRoot)]
     let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges thresholdNodes) thresholdNodes
     let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges)
@@ -828,7 +841,7 @@ main =
     -- need to add filter to remove HTU degreee < 2
     -- need to add second pass EUN after adding HTU->Leaf edges
     let allEdges = addAndReIndexEdges "all" unionNodes (concatMap G.labEdges (tail processedGraphs)) (G.labEdges $ head processedGraphs)
-    let thresholdEUNEdges = getThresholdEdges threshold (length processedGraphs) allEdges
+    let (thresholdEUNEdges, edgeFreqs) = getThresholdEdges threshold (length processedGraphs) allEdges
     let thresholdEUNGraph' = makeEUN unionNodes thresholdEUNEdges (G.mkGraph unionNodes thresholdEUNEdges)
 
     -- Remove unnconnected HTU nodes via postorder pass from leaves
