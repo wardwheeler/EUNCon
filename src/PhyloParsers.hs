@@ -593,7 +593,7 @@ getRoots inGraph nodeList =
   else
     let firstNode@(index, _) = head nodeList
     in
-    if (G.indeg inGraph index == 0) && (G.outdeg inGraph index > 0) then firstNode : getRoots inGraph (tail nodeList)
+    if (G.indeg inGraph index == 0) then firstNode : getRoots inGraph (tail nodeList)
     else getRoots inGraph (tail nodeList)
 
 -- | removeDuplicateSubtreeText removes duplicate subtree textx that come from indegree > 1 nodes
@@ -678,7 +678,7 @@ fgl2FEN writeEdgeWeight writeNodeLable fglGraph =
         -}
         wholeRep' = removeDuplicateSubtreeText wholeRep networkLabelledNodeList fglGraph writeEdgeWeight writeNodeLable
     in
-    -- trace ("fgl2FEN " ++ show rootOrder ++ "->" ++ show fenTextList) (
+    -- trace ("fgl2FEN " ++ (show $ length numRoots) ++ " " ++ show rootOrder ++ "->" ++ show fenTextList) (
     if length fenTextList == 1 then wholeRep' -- just a single tree/network
     else T.snoc (T.cons '<' wholeRep') '>'
     -- )
@@ -703,7 +703,7 @@ component2Newick fglGraph writeEdgeWeight writeNodeLable (index, label) =
     -- start with root (no in edge weight)
     let -- preorder traversal
         middlePartList = getNewick fglGraph writeEdgeWeight writeNodeLable (G.out fglGraph index)
-        label' = if writeNodeLable then label else T.empty
+        label' = if writeNodeLable then label else T.empty -- trivial trees or write node name
     in
     --trace ("MPL " ++ show middlePartList ++ " " ++ show (G.out fglGraph index)) (
     -- "naked" root
@@ -715,7 +715,7 @@ component2Newick fglGraph writeEdgeWeight writeNodeLable (index, label) =
       let middleText = T.intercalate (T.singleton ',') middlePartList
       in
       T.concat [T.singleton '(', middleText, T.singleton ')', label', T.singleton ';']
-    --)
+    
 
 
 -- | makeLabel takes Maybe T.Text and retuns T.empty if Nothing, Text otherwise
