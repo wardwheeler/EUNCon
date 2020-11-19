@@ -69,6 +69,11 @@
 	single trees (ie forest with a single component) are rendered as enewick.  Newick files can be visualized in a 
 	large number of programs (e.g. FigTree; \url{http://tree.bio.ed.ac.uk/software/figtree/})
 	
+	Example dot command line:
+	\quote{dot -Tpdf myDotFile.dot $>$ myDotFile.pdf}\\
+	
+	For some reason on OSX the `pdf' option does not sem to work.  You can use `'Tps' and that will generate a postscript file that preview can read and convert to pdf.
+	
 	\section{Command options}
 	There are only a few program options that require specification.  There are defaults for all but input graphs.  
 	Parameters are given with options in a range `a to b' (a-b) with any value in the interval, or alternates `a or b' (a|b). File options require a valid filename.
