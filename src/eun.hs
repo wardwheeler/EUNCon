@@ -211,7 +211,7 @@ changeLabelEdge numLeaves freqVect edgeList =
     let (e,u,_) = head edgeList
         newLabel = if u < numLeaves then 1 else if (u - numLeaves) >= V.length freqVect then 1 else freqVect V.! (u - numLeaves)
     in 
-    trace (show (e,u) ++ " " ++ (show (u - numLeaves)) ++ " " ++ show freqVect) -- ++ " " ++ show newLabel)
+    --trace (show (e,u) ++ " " ++ (show (u - numLeaves)) ++ " " ++ show freqVect) -- ++ " " ++ show newLabel)
     (e,u, newLabel) : changeLabelEdge numLeaves freqVect (tail edgeList)
   
 -- | addEdgeFrequenciesToGraph takes a greaph and edge frequencies and relables edges
@@ -222,7 +222,7 @@ addEdgeFrequenciesToGraph inGraph numLeaves freqList =
       inEdges = G.labEdges inGraph
       newEdges = changeLabelEdge numLeaves (V.fromList freqList) inEdges
   in
-  trace (show inEdges)
+  --trace (show inEdges)
   G.mkGraph inNodes newEdges
 
 -- | getLeafNumber take Graph and gets nu,ber of leaves (outdegree = 0)
@@ -626,7 +626,7 @@ getThresholdEdges thresholdInt numGraphsIn objectList
       frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
       fullPairList = zip uniqueList frequencyList
   in
-  trace ("There are " ++ (show numGraphsIn) ++ " to filter: " ++ (show uniqueList) ++ "\n" ++ (show $ fmap length objectGroupList) ++ " " ++ (show frequencyList))
+  --trace ("There are " ++ (show numGraphsIn) ++ " to filter: " ++ (show uniqueList) ++ "\n" ++ (show $ fmap length objectGroupList) ++ " " ++ (show frequencyList))
   (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> fullPairList)
   
 
