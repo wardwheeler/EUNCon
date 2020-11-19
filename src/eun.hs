@@ -35,6 +35,7 @@ Portability :  portable (I hope)
 
 -}
 
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
@@ -57,14 +58,14 @@ import           Data.List
 import qualified Data.Map.Strict                   as Map
 import           Data.Maybe
 import           Data.Monoid
+import qualified Data.Set                          as S
 import qualified Data.Text.Lazy                    as T
 import qualified Data.Vector                       as V
 import qualified ParseCommands                     as PC
 import qualified PhyloParsers                      as PhyP
 import           System.Environment
 import           System.IO
-import qualified Data.Set                          as S
-import           Debug.Trace
+--import           Debug.Trace
 
 
 -- NFData instance for parmap/rdeepseq
@@ -205,15 +206,18 @@ relabelEdge allNodesVect inLEdge =
 -- assumes that if an "urroot" has been added via `union` then it is last vertex
 -- this for condition where root has been added to majority consensus tree
 changeLabelEdge :: Int -> V.Vector Double -> [G.LEdge b] -> [G.LEdge Double]
-changeLabelEdge numLeaves freqVect edgeList = 
+changeLabelEdge numLeaves freqVect edgeList =
   if null edgeList then []
-  else 
-    let (e,u,_) = head edgeList
-        newLabel = if u < numLeaves then 1 else if (u - numLeaves) >= V.length freqVect then 1 else freqVect V.! (u - numLeaves)
-    in 
+  else
+    let (e,u,_) =head edgeList
+        newLabel
+          | u < numLeaves = 1
+          | (u - numLeaves) >= V.length freqVect = 1
+          | otherwise = freqVect V.! (u - numLeaves)
+    in
     --trace (show (e,u) ++ " " ++ (show (u - numLeaves)) ++ " " ++ show freqVect) -- ++ " " ++ show newLabel)
     (e,u, newLabel) : changeLabelEdge numLeaves freqVect (tail edgeList)
-  
+
 -- | addEdgeFrequenciesToGraph takes a greaph and edge frequencies and relables edges
 -- with node frequencies of discedendet node
 addEdgeFrequenciesToGraph :: (Show b) => P.Gr a b -> Int -> [Double] -> P.Gr a Double
@@ -372,7 +376,7 @@ addAndReIndexEdges keepMethod indexedNodes edgesToExamine uniqueReIndexedEdges =
       else addAndReIndexEdges keepMethod indexedNodes (tail edgesToExamine) uniqueReIndexedEdges
 
 -- | testEdge nodeList fullEdgeList) counter
--- chnage to input graph and delete edge from graph as opposed to making new graphs each time.  
+-- chnage to input graph and delete edge from graph as opposed to making new graphs each time.
 -- should be much faster using P.delLEdge (since only one edge to delete)
 testEdge :: P.Gr BV.BV (BV.BV, BV.BV) -> G.LEdge (BV.BV,BV.BV) -> [G.LEdge (BV.BV,BV.BV)]
 testEdge fullGraph candidateEdge@(e,u,_) =
@@ -383,7 +387,7 @@ testEdge fullGraph candidateEdge@(e,u,_) =
       (e,u, l) = head secondPart
       (newGraph :: P.Gr BV.BV (BV.BV, BV.BV)) = G.mkGraph nodeList newEdgeList
   -}
-  let (newGraph :: P.Gr BV.BV (BV.BV, BV.BV)) = G.delLEdge candidateEdge fullGraph 
+  let (newGraph :: P.Gr BV.BV (BV.BV, BV.BV)) = G.delLEdge candidateEdge fullGraph
       bfsNodes = BFS.bfs e newGraph
       foundU = find (== u) bfsNodes
   in
@@ -497,65 +501,49 @@ getIntersectionEdges bNodeList aNode =
           intersection = BV.and [aBV, bBV]
       in
       -- only do the directed 1/2 so no nub issues later
-      if (bBV >= aBV) then getIntersectionEdges (tail bNodeList) aNode
-      else if (intersection == 0) then getIntersectionEdges (tail bNodeList) aNode
+      if (bBV >= aBV) || (intersection == 0) then getIntersectionEdges (tail bNodeList) aNode
       else if intersection == bBV then (aIndex, bIndex, (aBV, bBV)) : getIntersectionEdges (tail bNodeList) aNode
       else  getIntersectionEdges (tail bNodeList) aNode
 
-      {-
-      if (intersection == 0) || (aBV == bBV) then getIntersectionEdges (tail bNodeList) aNode
-      else (if intersection == aBV then (bIndex, aIndex, (bBV, aBV)) : getIntersectionEdges (tail bNodeList) aNode
-      else if intersection == bBV then (aIndex, bIndex, (aBV, bBV)) : getIntersectionEdges (tail bNodeList) aNode
-      else  getIntersectionEdges (tail bNodeList) aNode)
-      -}
-
--- | combinable tales a list of bitvecotrs and a single bitvector 
+-- | combinable tales a list of bitvecotrs and a single bitvector
 -- and checks each of the first to see if combinable
 -- if A and B == A,B, or 0 then True else False
 -- if True return [bitvector] else []  if not
 combinable :: String -> [BV.BV] -> BV.BV -> [BV.BV]
-combinable comparison bvList bvIn =
-  if comparison == "identity" then 
-    if null bvList then []
-    else if bvIn `elem` bvList then [bvIn]
-    else []
-  else if comparison == "combinable" then -- combinable sensu Nelson 1979
+combinable comparison bvList bvIn
+  | comparison == "identity" =
+  if null bvList then []
+  else [bvIn | bvIn `elem` bvList]
+  | comparison == "combinable" = -- combinable sensu Nelson 1979
     if null bvList then [bvIn]
-    else 
+    else
       let intersectList = parmap rdeepseq (checkBitVectors bvIn) bvList
           isCombinable = foldl' (&&) True intersectList
       in
-      if isCombinable then [bvIn]
-      else []
-  else error ("Comparison method " ++ comparison ++ " unrecongnized (combinable/identity)")
-      where     
-          checkBitVectors a b = 
-            let c = BV.and [a, b] 
-            in
-            if c == a then True
-            else if c == b then True
-            else if c == 0 then True
-            else False
+      [bvIn | isCombinable]
+      | otherwise = error ("Comparison method " ++ comparison ++ " unrecongnized (combinable/identity)")
+      where checkBitVectors a b
+              = let c = BV.and [a, b] in
+                  c == a || c == b || c == 0
 
--- | combineComponents takes uses either exact match (identity) of Nelson combinable 
+-- | combineComponents takes uses either exact match (identity) of Nelson combinable
 -- components to get "intersection" set to
 -- allow for different leave sets will be nm in lengths of two lists of bit vectors
 -- return symmetrical compatible elements (a->b and b->a)
 -- not confident of null behavior.  Idea is that something does not contradict nothing
 combineComponents :: String -> [BV.BV] -> [BV.BV] -> [BV.BV]
-combineComponents comparison firstList secondList =
-  if null firstList && null secondList then []
-  else if comparison == "combinable" then -- combinable sensu Nelson 1979
+combineComponents comparison firstList secondList
+  | null firstList && null secondList = []
+  | comparison == "combinable" = -- combinable sensu Nelson 1979
     if null firstList then secondList
     else if null secondList then firstList
-    else 
+    else
       let firstCombinableSecond = concat $ parmap rdeepseq (combinable comparison secondList) firstList
           secondCombinableFirst = concat $ parmap rdeepseq (combinable comparison firstList) secondList
       in
       nub $ firstCombinableSecond ++ secondCombinableFirst
-  else -- "identity"
-    if null firstList || null secondList then []
-    else concat $ parmap rdeepseq (combinable comparison secondList) firstList
+      | null firstList || null secondList = []
+      | otherwise = concat $ parmap rdeepseq (combinable comparison secondList) firstList
 
 
 -- | getGraphCompatibleList takes a list of graphs (list of node Bitvectors)
@@ -565,20 +553,20 @@ combineComponents comparison firstList secondList =
 getGraphCompatibleList :: String -> [[BV.BV]] -> BV.BV-> [BV.BV]
 getGraphCompatibleList comparison inBVListList bvToCheck =
   if null inBVListList then error "Null list of list og bitvectors in getGraphCompatibleList"
-  else 
-    let compatibleList = concat $ parmap rdeepseq ((flip (combinable comparison)) bvToCheck) inBVListList
-    in 
+  else
+    let compatibleList = concat $ parmap rdeepseq (flip (combinable comparison) bvToCheck) inBVListList
+    in
     -- trace (show $ length compatibleList)
     compatibleList
 
 -- | getCompatibleList takes a list of graph node bitvectors as lists
 -- retuns a list of lists of bitvectors where the length of the list of the individual bitvectors
--- is the number of graphs it is compatible with 
+-- is the number of graphs it is compatible with
 getCompatibleList :: String -> [[BV.BV]] -> BV.BV -> [[BV.BV]]
 getCompatibleList comparison inBVListList urRoot =
   if null inBVListList then error "Null list of list og bitvectors in getCompatibleList"
-  else 
-    let uniqueBVList = nub $ urRoot : (concat inBVListList)
+  else
+    let uniqueBVList = nub $ urRoot : concat inBVListList
         bvCompatibleListList = parmap rdeepseq (getGraphCompatibleList comparison inBVListList) uniqueBVList
     in
     bvCompatibleListList
@@ -587,28 +575,26 @@ getCompatibleList comparison inBVListList urRoot =
 -- higher.  Sorted by frequency (low to high)
 -- urRoot added to make sure there will be a single connected graph
 getThresholdNodes :: String -> Int -> Int -> [[G.LNode BV.BV]] -> BV.BV -> ([G.LNode BV.BV], [Double])
-getThresholdNodes comparison thresholdInt numLeaves objectListList urRoot 
+getThresholdNodes comparison thresholdInt numLeaves objectListList urRoot
   | thresholdInt < 0 || thresholdInt > 100 = error "Threshold must be in range [0,100]"
   | null objectListList = error "Empty list of object lists in getThresholdObjects"
   | otherwise =
-  let threshold = (fromIntegral thresholdInt / 100.0) :: Double
-      numGraphs = fromIntegral $ length objectListList
-      -- get number compatible or won't work with different leaf numbers
-        --objectList = sort $ snd <$> concat objectListList
-        --objectGroupList = Data.List.group objectList
-      objectGroupList = if comparison == "combinable" then getCompatibleList comparison (fmap (fmap snd) objectListList) urRoot
-                        else if comparison == "identity" then Data.List.group $ sort $ (snd <$> concat objectListList) -- ++ (replicate (length objectListList) urRoot)
-                        else error ("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
+    let numGraphs = fromIntegral $ length objectListList
+        indexList = [numLeaves..(numLeaves + length objectGroupList - 1)]
+        uniqueList = zip indexList (fmap head objectGroupList)
+        frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
+        fullPairList = zip uniqueList frequencyList
+        threshold = (fromIntegral thresholdInt / 100.0) :: Double
+        objectGroupList
+          | comparison == "combinable" = getCompatibleList comparison (fmap (fmap snd) objectListList) urRoot
+          | comparison == "identity" = Data.List.group $ sort (snd <$> concat objectListList)
+          | otherwise = error ("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
 
-      indexList = [numLeaves..(numLeaves + length objectGroupList - 1)]
-      uniqueList = zip indexList (fmap head objectGroupList)
-      frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
-      fullPairList = (zip uniqueList frequencyList)
-  in
-  --trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ "\n" ++ (show objectGroupList) ++ " " ++ (show frequencyList))
-  --trace ("Total " ++ (show $ length fullPairList) ++ " left " ++ (show $ length (fst <$> filter ((>= threshold). snd) fullPairList)))
-  (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> fullPairList)
-  
+    in
+    --trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ "\n" ++ (show objectGroupList) ++ " " ++ (show frequencyList))
+    (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> fullPairList)
+
+
 
 -- |  getThresholdEdges takes a threshold and number of graphs and keeps those unique edges present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
@@ -628,8 +614,9 @@ getThresholdEdges thresholdInt numGraphsIn objectList
   in
   --trace ("There are " ++ (show numGraphsIn) ++ " to filter: " ++ (show uniqueList) ++ "\n" ++ (show $ fmap length objectGroupList) ++ " " ++ (show frequencyList))
   (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> fullPairList)
-  
 
+
+{-
 -- | getUnConnectedHTUs removes unconnected non-leaf nodes from graph
 -- this could be done better by just taking teh vertecces in the used edges
 -- that have a path to the leaf set?
@@ -638,65 +625,14 @@ getUnConnectedHTUs inGraph leafNodes
   | null leafNodes = error "Empty leaf node list in getConnectedHTUs"
   | G.isEmpty inGraph = error "Empty graph in getConnectedHTUs"
   | otherwise =
-  let nLeaves = length leafNodes
-      htuList = drop nLeaves $ G.nodes inGraph
-      degOutList = fmap (G.deg inGraph) htuList
-      newNodePair = zip degOutList htuList
-      htuPairList = filter ((< 2).fst ) newNodePair
-      (_, unConnectedLabHTUList) = unzip htuPairList
-  in
-  unConnectedLabHTUList
-
-
--- | getPostOrderVerts takes a vertex and traverses postorder to root places all visirted nodes in a set of found
--- vertices. Keeps placing new nodes in recursion list until a root is hit.  If a node is already in found set
--- it is not added to list of nodes to recurse 
--- returns set of visited nodes
-getPostOrderVerts :: P.Gr BV.BV (BV.BV, BV.BV) -> S.Set G.Node -> [G.Node] -> S.Set G.Node
-getPostOrderVerts inGraph foundVertSet inVertexList = 
-  if null inVertexList then foundVertSet
-  else 
-    let firstVertex = head inVertexList
+    let nLeaves = length leafNodes
+        htuList = drop nLeaves $ G.nodes inGraph
+        degOutList = fmap (G.deg inGraph) htuList
+        newNodePair = zip degOutList htuList
+        htuPairList = filter ((< 2).fst ) newNodePair
+        (_, unConnectedLabHTUList) = unzip htuPairList
     in
-    if S.member firstVertex foundVertSet then getPostOrderVerts inGraph foundVertSet (tail inVertexList)
-    else 
-      let newFoundSet = S.insert firstVertex foundVertSet 
-          parentVerts = G.pre inGraph firstVertex
-          -- parentIndexList = G.pre inGraph firstVertex
-          -- parentLabelList = fmap fromJust $ fmap (G.lab inGraph) parentIndexList
-          --parentVerts = zip parentIndexList parentLabelList
-      in 
-      getPostOrderVerts inGraph newFoundSet (inVertexList ++ parentVerts)
-
--- | verticesByPostorder takes a graph and a leaf set and an initially empty found vertex set
--- as the postorder pass takes place form each leaf, each visited vertex is placed in foundVertSet
--- when roots are hit, it recurses back untill all paths are traced to a root.
--- final final rgaph is created and retuyrned from foundVertSet and input list
--- could have edges unconnected to leaves if consistent edge leading to a subtree with inconsistent configuration
--- so are filtered out by making sure each vertex in an edge is in the vertex list
-verticesByPostorder :: P.Gr BV.BV (BV.BV, BV.BV) -> [G.LNode BV.BV] ->  S.Set G.Node -> P.Gr BV.BV (BV.BV, BV.BV)
-verticesByPostorder inGraph leafNodes foundVertSet =
-  if G.isEmpty inGraph then error "Empty graph in verticesByPostorder"
-  else if null leafNodes then 
-    let vertexIndexList = S.toList foundVertSet
-        vertexLabelList = fmap fromJust $ fmap (G.lab inGraph) vertexIndexList
-        vertexList = zip vertexIndexList vertexLabelList
-        edgeList = concat $ parmap rdeepseq (verifyEdge vertexIndexList) $ G.labEdges inGraph
-    in G.mkGraph vertexList edgeList
-  else 
-    let firstLeaf = fst $ head leafNodes
-        firstVertices = getPostOrderVerts inGraph foundVertSet [firstLeaf]
-    in
-    verticesByPostorder inGraph (tail leafNodes) (S.union foundVertSet firstVertices)
-
--- | verifyEdge takes a vertex index list and an edge and checks to see if 
--- the subtyending vertices are in the vertex list nad returns teh edge as asingleton list
--- if yes--else empty list (for mapping purposes)
-verifyEdge :: [G.Node] -> G.LEdge (BV.BV, BV.BV) -> [G.LEdge (BV.BV, BV.BV)]
-verifyEdge vertIndexList inEdge@(e,u,_) =
-  if e `notElem` vertIndexList then []
-  else if u `notElem` vertIndexList then []
-  else [inEdge]
+    unConnectedLabHTUList
 
 -- | removeUnconnectedHTUGraph iteratibvely removes unconnecvted HTU nodes iuntill graph stable
 removeUnconnectedHTUGraph ::  P.Gr BV.BV (BV.BV, BV.BV) -> [G.LNode BV.BV] ->  P.Gr BV.BV (BV.BV, BV.BV)
@@ -709,6 +645,59 @@ removeUnconnectedHTUGraph inGraph leafNodes
   if G.equal inGraph newGraph then inGraph
   else removeUnconnectedHTUGraph newGraph leafNodes
 
+
+
+-}
+
+-- | getPostOrderVerts takes a vertex and traverses postorder to root places all visirted nodes in a set of found
+-- vertices. Keeps placing new nodes in recursion list until a root is hit.  If a node is already in found set
+-- it is not added to list of nodes to recurse
+-- returns set of visited nodes
+getPostOrderVerts :: P.Gr BV.BV (BV.BV, BV.BV) -> S.Set G.Node -> [G.Node] -> S.Set G.Node
+getPostOrderVerts inGraph foundVertSet inVertexList =
+  if null inVertexList then foundVertSet
+  else
+    let firstVertex = head inVertexList
+    in
+    if S.member firstVertex foundVertSet then getPostOrderVerts inGraph foundVertSet (tail inVertexList)
+    else
+      let newFoundSet = S.insert firstVertex foundVertSet
+          parentVerts = G.pre inGraph firstVertex
+          -- parentIndexList = G.pre inGraph firstVertex
+          -- parentLabelList = fmap fromJust $ fmap (G.lab inGraph) parentIndexList
+          --parentVerts = zip parentIndexList parentLabelList
+      in
+      getPostOrderVerts inGraph newFoundSet (inVertexList ++ parentVerts)
+
+-- | verticesByPostorder takes a graph and a leaf set and an initially empty found vertex set
+-- as the postorder pass takes place form each leaf, each visited vertex is placed in foundVertSet
+-- when roots are hit, it recurses back untill all paths are traced to a root.
+-- final final rgaph is created and retuyrned from foundVertSet and input list
+-- could have edges unconnected to leaves if consistent edge leading to a subtree with inconsistent configuration
+-- so are filtered out by making sure each vertex in an edge is in the vertex list
+verticesByPostorder :: P.Gr BV.BV (BV.BV, BV.BV) -> [G.LNode BV.BV] ->  S.Set G.Node -> P.Gr BV.BV (BV.BV, BV.BV)
+verticesByPostorder inGraph leafNodes foundVertSet
+  | G.isEmpty inGraph = error "Empty graph in verticesByPostorder"
+  | null leafNodes =
+    let vertexIndexList = S.toList foundVertSet
+        vertexLabelList = fmap (fromJust . G.lab inGraph) vertexIndexList
+        vertexList = zip vertexIndexList vertexLabelList
+        edgeList = concat $ parmap rdeepseq (verifyEdge vertexIndexList) $ G.labEdges inGraph
+    in G.mkGraph vertexList edgeList
+      | otherwise =
+    let firstLeaf = fst $ head leafNodes
+        firstVertices = getPostOrderVerts inGraph foundVertSet [firstLeaf]
+    in
+    verticesByPostorder inGraph (tail leafNodes) (S.union foundVertSet firstVertices)
+
+-- | verifyEdge takes a vertex index list and an edge and checks to see if
+-- the subtyending vertices are in the vertex list nad returns teh edge as asingleton list
+-- if yes--else empty list (for mapping purposes)
+verifyEdge :: [G.Node] -> G.LEdge (BV.BV, BV.BV) -> [G.LEdge (BV.BV, BV.BV)]
+verifyEdge vertIndexList inEdge@(e,u,_)
+  | e `notElem` vertIndexList = []
+  | u `notElem` vertIndexList = []
+  | otherwise = [inEdge]
 
 -- | sortInputArgs takes a list of arguments (Strings) nd retuns a pair of lists
 -- of strings that are newick or graphviz dotFile filenames for later parsing
@@ -753,6 +742,7 @@ main =
     let splash2 = "EUNCon comes with ABSOLUTELY NO WARRANTY; This is free software, and may be \nredistributed "
     let splash3 = "under the GNU General Public License Version 2, June 1991.\n"
     hPutStrLn stderr (splash ++ splash2 ++ splash3)
+    
     -- Process arguments
     args <- getArgs
     let !(method, compareMethod, threshold, outputFormat, outputFile, inputFileList) = PC.processCommands args
@@ -816,7 +806,6 @@ main =
     hPutStrLn stderr ("\nTotal Graph with " ++ show (length unionNodes) ++ " nodes and " ++ show (length unionEdges) ++ " edges")
 
     -- EUN as in Miyagi anmd WHeeler (2019)
-    -- let (totalGraph :: P.Gr BV.BV (BV.BV, BV.BV)) = G.mkGraph unionNodes unionEdges
     let eunGraph = makeEUN unionNodes unionEdges (G.mkGraph unionNodes unionEdges)
     let eunInfo =  "EUN deleted " ++ show (length unionEdges - length (G.labEdges eunGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
@@ -832,20 +821,17 @@ main =
 
     -- Create Adams II consensus
     let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs
-    -- let labelledAdamsII = addGraphLabels adamsIIBV totallLeafSet
     let adamsIIInfo = "There are " ++ show (length $ G.nodes adamsII) ++ " nodes present in Adams II consensus"
     let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams adamsII
     let adamsIIOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph adamsII] False False
 
     -- Creatr Ur-Root for strict and majority consensi.  For non-overlapping leaf sets in "super" graphs
-    let urRoot = BV.or $ concat (fmap (fmap snd . G.labNodes) processedGraphs)
-    --hPutStrLn stderr ("\nurRoot: " ++ BV.showBin urRoot) 
+    let urRoot = BV.or $ concatMap (fmap snd . G.labNodes) processedGraphs
 
     -- Create strict consensus
-    -- let intersectionBVs = foldl1' intersect (fmap (fmap snd . G.labNodes) processedGraphs)
-    let intersectionBVs = (foldl1' (combineComponents compareMethod) (fmap (fmap snd . G.labNodes) processedGraphs)) `union` [urRoot]
+    let intersectionBVs = foldl1' (combineComponents compareMethod) (fmap (fmap snd . G.labNodes) processedGraphs) `union` [urRoot]
     let numberList = [0..(length intersectionBVs - 1)]
-    let intersectionNodes = (zip numberList intersectionBVs) -- `union` [(length intersectionBVs, urRoot)]
+    let intersectionNodes = zip numberList intersectionBVs -- `union` [(length intersectionBVs, urRoot)]
     let strictConInfo =  "There are " ++ show (length intersectionNodes) ++ " nodes present in all input graphs"
     let intersectionEdges = nub $ concat $ parmap rdeepseq  (getIntersectionEdges intersectionNodes) intersectionNodes
     let strictConsensusGraph = makeEUN intersectionNodes intersectionEdges (G.mkGraph intersectionNodes intersectionEdges)
@@ -857,7 +843,6 @@ main =
     -- vertex-based CUN-> Majority rule ->Strict
     let (thresholdNodes', nodeFreqs) = getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) urRoot
     let thresholdNodes = leafNodes ++ thresholdNodes'
-    --let thresholdNodes = thresholdNodes' `union` [(length thresholdNodes', urRoot)]
     let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges thresholdNodes) thresholdNodes
     let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges)
     let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in " ++ (show threshold ++ "%") ++ " of input graphs"
@@ -875,7 +860,6 @@ main =
 
     -- Remove unnconnected HTU nodes via postorder pass from leaves
     let thresholdEUNGraph = verticesByPostorder thresholdEUNGraph' leafNodes S.empty
-    -- let thresholdEUNGraph = removeUnconnectedHTUGraph thresholdEUNGraph' leafNodes
     let thresholdEUNInfo =  "\nThreshold EUN deleted " ++ show (length unionEdges - length (G.labEdges thresholdEUNGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
     let thresholdLabelledEUNGraph' = addGraphLabels thresholdEUNGraph totallLeafSet
@@ -888,7 +872,6 @@ main =
     let outDOT = outputFile ++ ".dot"
     let outFEN = outputFile ++ ".fen"
     if method == "eun" then
-        --if threshold == 0 then  do {hPutStrLn stderr eunInfo; writeFile outDOT eunOutDotString; writeFile outFEN eunOutFENString}
         if threshold == 0 then  do {hPutStrLn stderr eunInfo; if outputFormat=="dot" then writeFile outDOT eunOutDotString else writeFile outFEN eunOutFENString}
         else do {hPutStrLn stderr thresholdEUNInfo; if outputFormat=="dot" then writeFile outDOT thresholdEUNOutDotString else writeFile outFEN thresholdEUNOutFENString}
     else if method == "adams" then do {hPutStrLn stderr adamsIIInfo; if outputFormat=="dot" then writeFile outDOT adamsIIOutDotString else writeFile outFEN adamsIIOutFENString}

@@ -44,7 +44,6 @@ module ParseCommands (processCommands) where
 import qualified Data.Text.Lazy         as T
 import           Debug.Trace
 import           Data.Array
-import           Debug.Trace
 
 -- | function for first element of triple
 fst3 :: (a,b,c) -> a
@@ -59,11 +58,11 @@ editDistance xs ys = table ! (m,n)
     (m,n) = (length xs, length ys)
     x     = array (1,m) (zip [1..] xs)
     y     = array (1,n) (zip [1..] ys)
-    
+
     table :: Array (Int,Int) Int
     table = array bnds [(ij, dist ij) | ij <- range bnds]
     bnds  = ((0,0),(m,n))
-    
+
     dist (0,j) = j
     dist (i,0) = i
     dist (i,j) = minimum [table ! (i-1,j) + 1, table ! (i,j-1) + 1,
@@ -78,7 +77,7 @@ allowedCommandList = ["reconcile", "compare", "threshold", "outformat", "outfile
 getBestMatch :: (Int, String) -> [String] -> String -> (Int, String)
 getBestMatch curBest@(minDist, _) allowedStrings inString =
     if null allowedStrings then curBest
-    else 
+    else
         let candidate =  head allowedStrings
             candidateEditCost = editDistance candidate inString
         in
@@ -88,13 +87,13 @@ getBestMatch curBest@(minDist, _) allowedStrings inString =
 
 -- | getCommandErrorString takes list of non zero edits to allowed commands and reurns meaningful error string
 getCommandErrorString :: [(Int, String, String)] -> String
-getCommandErrorString noMatchList = 
+getCommandErrorString noMatchList =
     if null noMatchList then ""
-    else 
+    else
         let (_, firstCommand, firstMatch) = head noMatchList
             firstError = "\tBy \'" ++ firstCommand ++ "\' did you mean \'" ++ firstMatch ++ "\'?\n"
         in
-        firstError ++ (getCommandErrorString $ tail noMatchList)
+        firstError ++ getCommandErrorString (tail noMatchList)
 
 -- | processCommands takes a list of strings and returns values of commands for proram execution
 -- including defaults
@@ -114,8 +113,8 @@ processCommands inList =
         let inTextList = fmap T.pack inList
             inTextListLC = fmap T.toLower inTextList
             commandList = filter (T.any (== '=')) inTextListLC
-            stringCommands = (fmap T.unpack $ fmap (T.takeWhile (/= '=')) commandList)
-            (editCostList, matchList) = unzip $ fmap (getBestMatch ((maxBound :: Int) ,"no suggestion") allowedCommandList) stringCommands
+            stringCommands = fmap (T.unpack . T.takeWhile (/= '=')) commandList
+            (editCostList, matchList) = unzip $ fmap (getBestMatch (maxBound :: Int ,"no suggestion") allowedCommandList) stringCommands
             commandMatch = zip3 editCostList stringCommands matchList
             notMatchedList = filter ((>0).fst3) commandMatch
             inputFileList = getInputFileNames inTextList
@@ -125,8 +124,8 @@ processCommands inList =
             outFormat = getOutputFormat inTextListLC
             outFile =  getOutputFileName (zip inTextListLC inTextList)
         in
-        if length notMatchedList ==  0 then 
-            trace ("\nInput arguments: " ++ (show inList) ++ "\nProgram options: " ++ show (method, compareMethod, threshold, outFormat, outFile, inputFileList))
+        if null notMatchedList then
+            trace ("\nInput arguments: " ++ show inList ++ "\nProgram options: " ++ show (method, compareMethod, threshold, outFormat, outFile, inputFileList))
             (method, compareMethod, threshold, outFormat, outFile, inputFileList)
         else error ("\n\nError(s) in command specification (case insensitive):\n" ++ getCommandErrorString notMatchedList)
 
@@ -139,14 +138,14 @@ getInputFileNames inTextList = T.unpack <$> filter (T.all (/= '=')) inTextList
 -- assumes in lower case
 getMethod :: [T.Text] -> String
 getMethod inTextList =
-    if null inTextList then trace ("Warning: No reconcile specified defaulting to \'eun\'") "eun"
+    if null inTextList then trace "Warning: No reconcile specified defaulting to \'eun\'" "eun"
     else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
         in
-        if firstCommand == T.pack "reconcile" then 
+        if firstCommand == T.pack "reconcile" then
             let option = T.unpack firstOption
-            in 
+            in
             if option == "eun" then "eun"
             else if option == "cun" then "cun"
             else if option == "majority" then "majority"
@@ -159,14 +158,14 @@ getMethod inTextList =
 getCompareMethod :: [T.Text] -> String
 getCompareMethod inTextList =
 
-    if null inTextList then trace ("Warning: No compare specified defaulting to \'combinable\'") "combinable"
+    if null inTextList then trace "Warning: No compare specified defaulting to \'combinable\'" "combinable"
     else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
         in
-        if firstCommand == T.pack "compare" then 
+        if firstCommand == T.pack "compare" then
             let option = T.unpack firstOption
-            in 
+            in
             if option == "combinable" then "combinable"
             else if option == "identity" then"identity"
             else error ("Compare option \'" ++ option ++ "\' not recognized (combinable|identity)")
@@ -176,7 +175,7 @@ getCompareMethod inTextList =
 -- assumes in lower case
 getThreshold :: [T.Text] -> Int
 getThreshold inTextList =
-    if null inTextList then trace ("Warning: No threshold specified defaulting to \'0\'")  0 :: Int
+    if null inTextList then trace "Warning: No threshold specified defaulting to \'0\'"  0 :: Int
     else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
@@ -188,12 +187,12 @@ getThreshold inTextList =
 -- assumes in lower case
 getOutputFormat :: [T.Text] -> String
 getOutputFormat inTextList =
-    if null inTextList then trace ("Warning: No output format specified defaulting to \'dot\'") "dot"
+    if null inTextList then trace "Warning: No output format specified defaulting to \'dot\'" "dot"
     else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
         in
-        if firstCommand == T.pack "outformat" then 
+        if firstCommand == T.pack "outformat" then
             let outFormat = T.unpack firstOption
             in
             if outFormat == "dot" then "dot"
@@ -205,7 +204,7 @@ getOutputFormat inTextList =
 -- assumes in lower case for command, uses pair so no case convewrsino in files name
 getOutputFileName :: [(T.Text, T.Text)] -> String
 getOutputFileName inTextPairList =
-    if null inTextPairList then trace ("Warning: No output file name specified defaulting to \'euncon.out\'") "euncon.out"
+    if null inTextPairList then trace "Warning: No output file name specified defaulting to \'euncon.out\'" "euncon.out"
     else
         let (textListLC, textList) = head inTextPairList
             firstCommand = T.takeWhile (/= '=') textListLC

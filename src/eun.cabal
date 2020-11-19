@@ -22,10 +22,12 @@ executable euncon
                 -Wincomplete-patterns
                 -threaded 
                 -O2
-                -fwrite-ide-info
+                -- for weeder
+                -fwrite-ide-info 
 		            -optl-static -optl-pthread
                 -static
 
+-- delete these for OSX
   cc-options: -static
   ld-options: -static -pthread
 

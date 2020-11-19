@@ -101,10 +101,10 @@ getAdamsIIPair inGraphVectA inGraphVectB =
             rootSplits = map getSecond rootVertexList
             rootSplitLeafListList = getSplitLeafListList rootSplits inGraphVectList
             rootLUBPre = leastUpperBound rootSplitLeafListList
-            rootLUB = map sort $ [x | x <- rootLUBPre, not (null x)] --need map sort $
+            rootLUB = map sort [x | x <- rootLUBPre, not (null x)] --need map sort $
 
             --create nodes based on LUBs
-            leavesPlaced = concat $  [x | x <- rootLUB, length x < 3]
+            leavesPlaced = concat [x | x <- rootLUB, length x < 3]
             rootNode = ("root", map lub2TreeRep rootLUB, [])
             vertexLeafSetList = map (map getLeafSetFromNodeName . V.toList) curVertexSets
             potentialVertexSets = map (map getSecond . V.toList) curVertexSets
@@ -438,7 +438,7 @@ makeAdamsNodes inAdamsTree parentName inLUBList placedTaxa bothLeafLists = --inT
         else --core case with LUB creation and taxon placementg
             let splitListList = map (getSplitList curLUB placedTaxa) bothLeafLists --(zip inTreeVertexLists vertexLeafSetList)
                 newLUBpre = leastUpperBound splitListList
-                newLUB =  map sort $ [x | x <- newLUBpre, not (null x)] --had "map sort $" was this "sort" necessary?  for List intersection?
+                newLUB =  map sort  [x | x <- newLUBpre, not (null x)] --had "map sort $" was this "sort" necessary?  for List intersection?
                 newNode = (lub2TreeRep curLUB, map lub2TreeRep newLUB, [parentName])
             in
             --trace ("New LUBs " ++ show newLUB ++ " newNode " ++ show newNode)

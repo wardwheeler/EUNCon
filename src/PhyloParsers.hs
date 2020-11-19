@@ -141,7 +141,7 @@ import           Debug.Trace
 {--
     Using Text as ouput for non-standard ascii characters (accents, umlautes etc)
 --}
-  
+
 -- |
 -- Map a function over a traversable structure in parallel
 -- Preferred over parMap which is limited to lists
@@ -593,7 +593,7 @@ getRoots inGraph nodeList =
   else
     let firstNode@(index, _) = head nodeList
     in
-    if (G.indeg inGraph index == 0) then firstNode : getRoots inGraph (tail nodeList)
+    if G.indeg inGraph index == 0 then firstNode : getRoots inGraph (tail nodeList)
     else getRoots inGraph (tail nodeList)
 
 -- | removeDuplicateSubtreeText removes duplicate subtree textx that come from indegree > 1 nodes
@@ -709,13 +709,13 @@ component2Newick fglGraph writeEdgeWeight writeNodeLable (index, label) =
     -- "naked" root
     if null middlePartList then T.concat [T.singleton '(', label, T.singleton ')', T.singleton ';']
     -- single output edge
-    else if length middlePartList == 1 then 
+    else if length middlePartList == 1 then
       T.concat [T.singleton '(', head middlePartList, T.singleton ')', label', T.singleton ';']
     else
       let middleText = T.intercalate (T.singleton ',') middlePartList
       in
       T.concat [T.singleton '(', middleText, T.singleton ')', label', T.singleton ';']
-    
+
 
 
 -- | makeLabel takes Maybe T.Text and retuns T.empty if Nothing, Text otherwise
