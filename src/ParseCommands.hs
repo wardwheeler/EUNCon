@@ -102,7 +102,7 @@ processCommands :: [String] -> (String, String, Int, String, String, [String])
 processCommands inList =
     if null inList then error ("\n\nError--No input parameters.\nParameters that can be set:"
         ++ "\n\tReconcile=(eun|cun|strict|majority|Adams) "
-        ++ "\n\tCompare=combinable|exact "
+        ++ "\n\tCompare=combinable|identity "
         ++ "\n\tThreshold=0-100 "
         ++ "\n\tOutFormat=Dot|FENewick"
         ++ "\n\tOutFile=filename"
