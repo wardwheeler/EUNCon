@@ -151,7 +151,7 @@ getMethod inTextList =
             else if option == "cun" then "cun"
             else if option == "majority" then "majority"
             else if option == "strict" then "strict"
-            else error ("Reconcile option \'" ++ option ++ "\' not recognized")
+            else error ("Reconcile option \'" ++ option ++ "\' not recognized (eun|cun|majority|strict)")
         else getMethod (tail inTextList)
 
 -- | getCompareMethod returns compareMethod value or dedfault otherwise
@@ -169,7 +169,7 @@ getCompareMethod inTextList =
             in 
             if option == "combinable" then "combinable"
             else if option == "identity" then"identity"
-            else error ("Compare option \'" ++ option ++ "\' not recognized")
+            else error ("Compare option \'" ++ option ++ "\' not recognized (combinable|identity)")
         else getCompareMethod (tail inTextList)
 
 -- | getThreshold returns threshold value or default otherwise
@@ -193,7 +193,12 @@ getOutputFormat inTextList =
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
             firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
         in
-        if firstCommand == T.pack "outformat" then T.unpack firstOption
+        if firstCommand == T.pack "outformat" then 
+            let outFormat = T.unpack firstOption
+            in
+            if outFormat == "dot" then "dot"
+            else if outFormat == "fenewick" then "fennewick"
+            else error ("Output format \'" ++ outFormat ++ "\' not recognized (dot|FENewickewick)")
         else getOutputFormat (tail inTextList)
 
 -- | getOutputFileName returns output file name or default otherwise

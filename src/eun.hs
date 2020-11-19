@@ -211,10 +211,10 @@ changeLabelEdge numLeaves freqVect edgeList =
     let (e,u,_) = head edgeList
         newLabel = if u < numLeaves then 1 else if (u - numLeaves) >= V.length freqVect then 1 else freqVect V.! (u - numLeaves)
     in 
-    -- trace (show (e,u) ++ " " ++ (show (u - numLeaves)) ++ " " ++ show freqVect) -- ++ " " ++ show newLabel)
+    trace (show (e,u) ++ " " ++ (show (u - numLeaves)) ++ " " ++ show freqVect) -- ++ " " ++ show newLabel)
     (e,u, newLabel) : changeLabelEdge numLeaves freqVect (tail edgeList)
   
--- | addEdgeFrequenciesToGraph takes a greaph and edhge frequencies and relables edges
+-- | addEdgeFrequenciesToGraph takes a greaph and edge frequencies and relables edges
 -- with node frequencies of discedendet node
 addEdgeFrequenciesToGraph :: (Show b) => P.Gr a b -> Int -> [Double] -> P.Gr a Double
 addEdgeFrequenciesToGraph inGraph numLeaves freqList =
@@ -222,7 +222,7 @@ addEdgeFrequenciesToGraph inGraph numLeaves freqList =
       inEdges = G.labEdges inGraph
       newEdges = changeLabelEdge numLeaves (V.fromList freqList) inEdges
   in
-  -- trace (show inEdges)
+  trace (show inEdges)
   G.mkGraph inNodes newEdges
 
 -- | getLeafNumber take Graph and gets nu,ber of leaves (outdegree = 0)
@@ -509,7 +509,7 @@ getIntersectionEdges bNodeList aNode =
       else  getIntersectionEdges (tail bNodeList) aNode)
       -}
 
--- combinable tales a list of bitvecotrs and a single bitvector 
+-- | combinable tales a list of bitvecotrs and a single bitvector 
 -- and checks each of the first to see if combinable
 -- if A and B == A,B, or 0 then True else False
 -- if True return [bitvector] else []  if not
@@ -537,22 +537,28 @@ combinable comparison bvList bvIn =
             else if c == 0 then True
             else False
 
--- combineComponents takes uses Nelson combinable components to get "intersection" set to
+-- | combineComponents takes uses either exact match (identity) of Nelson combinable 
+-- components to get "intersection" set to
 -- allow for different leave sets will be nm in lengths of two lists of bit vectors
 -- return symmetrical compatible elements (a->b and b->a)
 -- not confident of null behavior.  Idea is that something does not contradict nothing
 combineComponents :: String -> [BV.BV] -> [BV.BV] -> [BV.BV]
 combineComponents comparison firstList secondList =
   if null firstList && null secondList then []
-  else if null firstList then secondList
-  else if null secondList then firstList
-  else 
-    let firstCombinableSecond = concat $ parmap rdeepseq (combinable comparison secondList) firstList
-        secondCombinableFirst = concat $ parmap rdeepseq (combinable comparison firstList) secondList
-    in
-    nub $ firstCombinableSecond ++ secondCombinableFirst
+  else if comparison == "combinable" then -- combinable sensu Nelson 1979
+    if null firstList then secondList
+    else if null secondList then firstList
+    else 
+      let firstCombinableSecond = concat $ parmap rdeepseq (combinable comparison secondList) firstList
+          secondCombinableFirst = concat $ parmap rdeepseq (combinable comparison firstList) secondList
+      in
+      nub $ firstCombinableSecond ++ secondCombinableFirst
+  else -- "identity"
+    if null firstList || null secondList then []
+    else concat $ parmap rdeepseq (combinable comparison secondList) firstList
 
--- getGraphCompatibleList takes a list of graphs (list of node Bitvectors)
+
+-- | getGraphCompatibleList takes a list of graphs (list of node Bitvectors)
 -- and retuns a list of each graph a bitvector node is compatible with
 -- this isued later for majority rule consensus
 -- each bit vector node will have a list of length 1..number of graphs
@@ -565,7 +571,7 @@ getGraphCompatibleList comparison inBVListList bvToCheck =
     -- trace (show $ length compatibleList)
     compatibleList
 
--- getCompatibleList takes a list of graph node bitvectors as lists
+-- | getCompatibleList takes a list of graph node bitvectors as lists
 -- retuns a list of lists of bitvectors where the length of the list of the individual bitvectors
 -- is the number of graphs it is compatible with 
 getCompatibleList :: String -> [[BV.BV]] -> BV.BV -> [[BV.BV]]
@@ -577,7 +583,7 @@ getCompatibleList comparison inBVListList urRoot =
     in
     bvCompatibleListList
 
--- |  getThresholdNodes takes a threshold and keeps those unique objects present in the threshold percent or
+-- | getThresholdNodes takes a threshold and keeps those unique objects present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
 -- urRoot added to make sure there will be a single connected graph
 getThresholdNodes :: String -> Int -> Int -> [[G.LNode BV.BV]] -> BV.BV -> ([G.LNode BV.BV], [Double])
@@ -591,7 +597,7 @@ getThresholdNodes comparison thresholdInt numLeaves objectListList urRoot
         --objectList = sort $ snd <$> concat objectListList
         --objectGroupList = Data.List.group objectList
       objectGroupList = if comparison == "combinable" then getCompatibleList comparison (fmap (fmap snd) objectListList) urRoot
-                        else if comparison == "identity" then Data.List.group $ sort $ (snd <$> concat objectListList) ++ (replicate (length objectListList) urRoot)
+                        else if comparison == "identity" then Data.List.group $ sort $ (snd <$> concat objectListList) -- ++ (replicate (length objectListList) urRoot)
                         else error ("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
 
       indexList = [numLeaves..(numLeaves + length objectGroupList - 1)]
@@ -599,10 +605,10 @@ getThresholdNodes comparison thresholdInt numLeaves objectListList urRoot
       frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
       fullPairList = (zip uniqueList frequencyList)
   in
-  -- trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ " " ++ (show frequencyList))
+  --trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ "\n" ++ (show objectGroupList) ++ " " ++ (show frequencyList))
   --trace ("Total " ++ (show $ length fullPairList) ++ " left " ++ (show $ length (fst <$> filter ((>= threshold). snd) fullPairList)))
-  --(fst <$> filter ((>= threshold). snd) fullPairList, snd <$> filter ((>= threshold). snd) fullPairList)
-  unzip $ filter ((>= threshold). snd) fullPairList
+  (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> fullPairList)
+  
 
 -- |  getThresholdEdges takes a threshold and number of graphs and keeps those unique edges present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
@@ -620,8 +626,9 @@ getThresholdEdges thresholdInt numGraphsIn objectList
       frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
       fullPairList = zip uniqueList frequencyList
   in
-  -- (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> filter ((>= threshold). snd) fullPairList)
-  unzip $ filter ((>= threshold). snd) fullPairList
+  trace ("There are " ++ (show numGraphsIn) ++ " to filter: " ++ (show uniqueList) ++ "\n" ++ (show $ fmap length objectGroupList) ++ " " ++ (show frequencyList))
+  (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> fullPairList)
+  
 
 -- | getUnConnectedHTUs removes unconnected non-leaf nodes from graph
 -- this could be done better by just taking teh vertecces in the used edges
@@ -813,10 +820,15 @@ main =
     let eunGraph = makeEUN unionNodes unionEdges (G.mkGraph unionNodes unionEdges)
     let eunInfo =  "EUN deleted " ++ show (length unionEdges - length (G.labEdges eunGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
-    let labelledEUNGraph = addGraphLabels eunGraph totallLeafSet
+    let labelledEUNGraph' = addGraphLabels eunGraph totallLeafSet
+
+    -- Add Frequencies to edges--this adds significant ime due to recalciualting and counting edges
+    let allEUNEdges = addAndReIndexEdges "all" unionNodes (concatMap G.labEdges (tail processedGraphs)) (G.labEdges $ head processedGraphs)
+    let (_, edgeFreqs') = getThresholdEdges 0 (length processedGraphs) allEUNEdges -- (G.labEdges eunGraph)
+    let labelledEUNGraph = addEdgeFrequenciesToGraph labelledEUNGraph' (length leafNodes) edgeFreqs'
     -- Create EUN Dot file
     let eunOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledEUNGraph -- eunGraph
-    let eunOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledEUNGraph] False False
+    let eunOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledEUNGraph] True False
 
     -- Create Adams II consensus
     let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs
