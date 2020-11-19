@@ -601,7 +601,8 @@ getThresholdNodes comparison thresholdInt numLeaves objectListList urRoot
   in
   -- trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ " " ++ (show frequencyList))
   --trace ("Total " ++ (show $ length fullPairList) ++ " left " ++ (show $ length (fst <$> filter ((>= threshold). snd) fullPairList)))
-  (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> filter ((>= threshold). snd) fullPairList)
+  --(fst <$> filter ((>= threshold). snd) fullPairList, snd <$> filter ((>= threshold). snd) fullPairList)
+  unzip $ filter ((>= threshold). snd) fullPairList
 
 -- |  getThresholdEdges takes a threshold and number of graphs and keeps those unique edges present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
@@ -619,7 +620,8 @@ getThresholdEdges thresholdInt numGraphsIn objectList
       frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
       fullPairList = zip uniqueList frequencyList
   in
-  (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> filter ((>= threshold). snd) fullPairList)
+  -- (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> filter ((>= threshold). snd) fullPairList)
+  unzip $ filter ((>= threshold). snd) fullPairList
 
 -- | getUnConnectedHTUs removes unconnected non-leaf nodes from graph
 -- this could be done better by just taking teh vertecces in the used edges
