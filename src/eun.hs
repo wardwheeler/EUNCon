@@ -615,40 +615,6 @@ getThresholdEdges thresholdInt numGraphsIn objectList
   --trace ("There are " ++ (show numGraphsIn) ++ " to filter: " ++ (show uniqueList) ++ "\n" ++ (show $ fmap length objectGroupList) ++ " " ++ (show frequencyList))
   (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> fullPairList)
 
-
-{-
--- | getUnConnectedHTUs removes unconnected non-leaf nodes from graph
--- this could be done better by just taking teh vertecces in the used edges
--- that have a path to the leaf set?
-getUnConnectedHTUs :: P.Gr a b ->  [G.LNode a] -> [G.Node]
-getUnConnectedHTUs inGraph leafNodes
-  | null leafNodes = error "Empty leaf node list in getConnectedHTUs"
-  | G.isEmpty inGraph = error "Empty graph in getConnectedHTUs"
-  | otherwise =
-    let nLeaves = length leafNodes
-        htuList = drop nLeaves $ G.nodes inGraph
-        degOutList = fmap (G.deg inGraph) htuList
-        newNodePair = zip degOutList htuList
-        htuPairList = filter ((< 2).fst ) newNodePair
-        (_, unConnectedLabHTUList) = unzip htuPairList
-    in
-    unConnectedLabHTUList
-
--- | removeUnconnectedHTUGraph iteratibvely removes unconnecvted HTU nodes iuntill graph stable
-removeUnconnectedHTUGraph ::  P.Gr BV.BV (BV.BV, BV.BV) -> [G.LNode BV.BV] ->  P.Gr BV.BV (BV.BV, BV.BV)
-removeUnconnectedHTUGraph inGraph leafNodes
-  | G.isEmpty inGraph = error "Empty graph in removeUnconnectedHTUGraph"
-  | null leafNodes = error "Empty leaf node list in removeUnconnectedHTUGraph"
-  | otherwise =
-  let newGraph = G.delNodes (getUnConnectedHTUs inGraph leafNodes) inGraph
-  in
-  if G.equal inGraph newGraph then inGraph
-  else removeUnconnectedHTUGraph newGraph leafNodes
-
-
-
--}
-
 -- | getPostOrderVerts takes a vertex and traverses postorder to root places all visirted nodes in a set of found
 -- vertices. Keeps placing new nodes in recursion list until a root is hit.  If a node is already in found set
 -- it is not added to list of nodes to recurse
@@ -805,6 +771,7 @@ main =
     -- Total graph of all nodes to start
     hPutStrLn stderr ("\nTotal Graph with " ++ show (length unionNodes) ++ " nodes and " ++ show (length unionEdges) ++ " edges")
 
+    {-This subsumed into threshold EUN with threshold 0
     -- EUN as in Miyagi anmd WHeeler (2019)
     let eunGraph = makeEUN unionNodes unionEdges (G.mkGraph unionNodes unionEdges)
     let eunInfo =  "EUN deleted " ++ show (length unionEdges - length (G.labEdges eunGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
@@ -818,6 +785,7 @@ main =
     -- Create EUN Dot file
     let eunOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledEUNGraph -- eunGraph
     let eunOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledEUNGraph] True False
+    -}
 
     -- Create Adams II consensus
     let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs
@@ -872,8 +840,9 @@ main =
     let outDOT = outputFile ++ ".dot"
     let outFEN = outputFile ++ ".fen"
     if method == "eun" then
-        if threshold == 0 then  do {hPutStrLn stderr eunInfo; if outputFormat=="dot" then writeFile outDOT eunOutDotString else writeFile outFEN eunOutFENString}
-        else do {hPutStrLn stderr thresholdEUNInfo; if outputFormat=="dot" then writeFile outDOT thresholdEUNOutDotString else writeFile outFEN thresholdEUNOutFENString}
+        --if threshold == 0 then  do {hPutStrLn stderr eunInfo; if outputFormat=="dot" then writeFile outDOT eunOutDotString else writeFile outFEN eunOutFENString}
+        --else 
+        do {hPutStrLn stderr thresholdEUNInfo; if outputFormat=="dot" then writeFile outDOT thresholdEUNOutDotString else writeFile outFEN thresholdEUNOutFENString}
     else if method == "adams" then do {hPutStrLn stderr adamsIIInfo; if outputFormat=="dot" then writeFile outDOT adamsIIOutDotString else writeFile outFEN adamsIIOutFENString}
     else if (method == "majority") || (method == "cun") then
         if threshold == 100 then do {hPutStrLn stderr strictConInfo; if outputFormat=="dot" then writeFile outDOT strictConsensusOutDotString else writeFile outFEN strictConsensusOutFENString}
