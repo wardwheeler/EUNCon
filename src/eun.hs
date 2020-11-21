@@ -99,7 +99,7 @@ setOutDegreeOneBit outDegree nLeaves inBitVect =
 
 -- | getRoot takes a greaph and list of nodes and returns vertex with indegree 0
 -- so assumes a connected graph--with a single root--not a forest
-getRoots :: P.Gr String String -> [G.Node] -> [Int]
+getRoots :: P.Gr a b -> [G.Node] -> [Int]
 getRoots inGraph nodeList =
   if null nodeList then []
   else
@@ -512,8 +512,8 @@ getIntersectionEdges bNodeList aNode =
 combinable :: String -> [BV.BV] -> BV.BV -> [BV.BV]
 combinable comparison bvList bvIn
   | comparison == "identity" =
-  if null bvList then []
-  else [bvIn | bvIn `elem` bvList]
+    if null bvList then []
+    else [bvIn | bvIn `elem` bvList]
   | comparison == "combinable" = -- combinable sensu Nelson 1979
     if null bvList then [bvIn]
     else
@@ -521,7 +521,7 @@ combinable comparison bvList bvIn
           isCombinable = foldl' (&&) True intersectList
       in
       [bvIn | isCombinable]
-      | otherwise = error ("Comparison method " ++ comparison ++ " unrecongnized (combinable/identity)")
+  | otherwise = error ("Comparison method " ++ comparison ++ " unrecongnized (combinable/identity)")
       where checkBitVectors a b
               = let c = BV.and [a, b] in
                   c == a || c == b || c == 0
@@ -542,8 +542,10 @@ combineComponents comparison firstList secondList
           secondCombinableFirst = concat $ parmap rdeepseq (combinable comparison firstList) secondList
       in
       nub $ firstCombinableSecond ++ secondCombinableFirst
-      | null firstList || null secondList = []
-      | otherwise = concat $ parmap rdeepseq (combinable comparison secondList) firstList
+  | comparison == "identity" =
+    if null firstList || null secondList then []
+    else concat $ parmap rdeepseq (combinable comparison secondList) firstList
+  | otherwise = error ("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
 
 
 -- | getGraphCompatibleList takes a list of graphs (list of node Bitvectors)
@@ -562,11 +564,12 @@ getGraphCompatibleList comparison inBVListList bvToCheck =
 -- | getCompatibleList takes a list of graph node bitvectors as lists
 -- retuns a list of lists of bitvectors where the length of the list of the individual bitvectors
 -- is the number of graphs it is compatible with
-getCompatibleList :: String -> [[BV.BV]] -> BV.BV -> [[BV.BV]]
-getCompatibleList comparison inBVListList urRoot =
+getCompatibleList :: String -> [[BV.BV]] -> Bool -> BV.BV -> [[BV.BV]]
+getCompatibleList comparison inBVListList connectComponents urRoot =
   if null inBVListList then error "Null list of list og bitvectors in getCompatibleList"
   else
-    let uniqueBVList = nub $ urRoot : concat inBVListList
+    let uniqueBVList = if connectComponents then nub $ urRoot : concat inBVListList 
+                       else nub $ concat inBVListList
         bvCompatibleListList = parmap rdeepseq (getGraphCompatibleList comparison inBVListList) uniqueBVList
     in
     bvCompatibleListList
@@ -574,22 +577,27 @@ getCompatibleList comparison inBVListList urRoot =
 -- | getThresholdNodes takes a threshold and keeps those unique objects present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
 -- urRoot added to make sure there will be a single connected graph
-getThresholdNodes :: String -> Int -> Int -> [[G.LNode BV.BV]] -> BV.BV -> ([G.LNode BV.BV], [Double])
-getThresholdNodes comparison thresholdInt numLeaves objectListList urRoot
+getThresholdNodes :: String -> Int -> Int -> [[G.LNode BV.BV]] -> Bool -> BV.BV -> ([G.LNode BV.BV], [Double])
+getThresholdNodes comparison thresholdInt numLeaves objectListList connectComponents urRoot
   | thresholdInt < 0 || thresholdInt > 100 = error "Threshold must be in range [0,100]"
   | null objectListList = error "Empty list of object lists in getThresholdObjects"
   | otherwise =
     let numGraphs = fromIntegral $ length objectListList
         indexList = [numLeaves..(numLeaves + length objectGroupList - 1)]
+        objectGroupList
+          | comparison == "combinable" = getCompatibleList comparison (fmap (fmap snd) objectListList) connectComponents urRoot
+          | comparison == "identity" = 
+              if not connectComponents then Data.List.group $ sort (snd <$> concat objectListList)
+              else 
+                let noRootList = sort $ filter (/= urRoot ) (snd <$> concat objectListList)
+                    urRootList = replicate (length objectListList) urRoot
+                in
+                Data.List.group (urRootList ++ noRootList)
+          | otherwise = error ("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
         uniqueList = zip indexList (fmap head objectGroupList)
         frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
         fullPairList = zip uniqueList frequencyList
-        threshold = (fromIntegral thresholdInt / 100.0) :: Double
-        objectGroupList
-          | comparison == "combinable" = getCompatibleList comparison (fmap (fmap snd) objectListList) urRoot
-          | comparison == "identity" = Data.List.group $ sort (snd <$> concat objectListList)
-          | otherwise = error ("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
-
+        threshold = (fromIntegral thresholdInt / 100.0) :: Double   
     in
     --trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ "\n" ++ (show objectGroupList) ++ " " ++ (show frequencyList))
     (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> fullPairList)
@@ -700,6 +708,22 @@ fglTextB2Text inGraph =
     in
     G.mkGraph labNodes newEdges
 
+-- | addUrRootAndEdges 
+addUrRootAndEdges :: P.Gr String Double -> P.Gr String Double
+addUrRootAndEdges inGraph = 
+  let origLabVerts = G.labNodes inGraph
+      origRootList = getRoots inGraph (fst <$> origLabVerts)
+  in 
+  if (length origRootList) == 1 then inGraph
+  else 
+    let origLabEdges = G.labEdges inGraph
+        numOrigVerts = length origLabVerts
+        newRoot = (numOrigVerts, ("HTU" ++ show numOrigVerts))
+        newEdgeList = zip3 (replicate (length origRootList) numOrigVerts) origRootList (replicate (length origRootList) 1.0)
+    in
+    G.mkGraph (origLabVerts ++ [newRoot]) (origLabEdges ++ newEdgeList)
+
+
 -- | main driver
 main :: IO ()
 main =
@@ -711,7 +735,7 @@ main =
     
     -- Process arguments
     args <- getArgs
-    let !(method, compareMethod, threshold, outputFormat, outputFile, inputFileList) = PC.processCommands args
+    let !(method, compareMethod, threshold, connectComponents, outputFormat, outputFile, inputFileList) = PC.processCommands args
 
     hPutStrLn stderr ("\nGraph combination method: " ++ method ++ " at threshold " ++ show threshold ++ "\n")
 
@@ -797,7 +821,8 @@ main =
     let urRoot = BV.or $ concatMap (fmap snd . G.labNodes) processedGraphs
 
     -- Create strict consensus
-    let intersectionBVs = foldl1' (combineComponents compareMethod) (fmap (fmap snd . G.labNodes) processedGraphs) `union` [urRoot]
+    let nodeBVSet = foldl1' (combineComponents compareMethod) (fmap (fmap snd . G.labNodes) processedGraphs) 
+    let intersectionBVs = if connectComponents then nodeBVSet `union` [urRoot] else nodeBVSet
     let numberList = [0..(length intersectionBVs - 1)]
     let intersectionNodes = zip numberList intersectionBVs -- `union` [(length intersectionBVs, urRoot)]
     let strictConInfo =  "There are " ++ show (length intersectionNodes) ++ " nodes present in all input graphs"
@@ -809,7 +834,7 @@ main =
 
     -- Create thresholdMajority rule Consensus and dot string
     -- vertex-based CUN-> Majority rule ->Strict
-    let (thresholdNodes', nodeFreqs) = getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) urRoot
+    let (thresholdNodes', nodeFreqs) = getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) connectComponents urRoot
     let thresholdNodes = leafNodes ++ thresholdNodes'
     let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges thresholdNodes) thresholdNodes
     let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges)
@@ -831,7 +856,11 @@ main =
     let thresholdEUNInfo =  "\nThreshold EUN deleted " ++ show (length unionEdges - length (G.labEdges thresholdEUNGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
     let thresholdLabelledEUNGraph' = addGraphLabels thresholdEUNGraph totallLeafSet
-    let thresholdLabelledEUNGraph = addEdgeFrequenciesToGraph thresholdLabelledEUNGraph' (length leafNodes) edgeFreqs
+    let thresholdLabelledEUNGraph'' = addEdgeFrequenciesToGraph thresholdLabelledEUNGraph' (length leafNodes) edgeFreqs
+
+    -- Add urRoot and edges to existing roots if there are unconnected components and connnectComponets is True
+    let thresholdLabelledEUNGraph = if not connectComponents then thresholdLabelledEUNGraph'' else addUrRootAndEdges thresholdLabelledEUNGraph''
+
     -- Create EUN Dot file
     let thresholdEUNOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams thresholdLabelledEUNGraph -- eunGraph
     let thresholdEUNOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph thresholdLabelledEUNGraph] True False

@@ -70,7 +70,7 @@ editDistance xs ys = table ! (m,n)
 
 -- | allowedCommandList list of allowable commands
 allowedCommandList :: [String]
-allowedCommandList = ["reconcile", "compare", "threshold", "outformat", "outfile"]
+allowedCommandList = ["reconcile", "compare", "threshold", "outformat", "outfile", "connect"]
 
 -- | getBestMatch compares input to allowable commands and checks if in list and if not outputs
 -- closest match
@@ -98,13 +98,14 @@ getCommandErrorString noMatchList =
 -- | processCommands takes a list of strings and returns values of commands for proram execution
 -- including defaults
 -- checks commands for misspellings
-processCommands :: [String] -> (String, String, Int, String, String, [String])
+processCommands :: [String] -> (String, String, Int, Bool, String, String, [String])
 processCommands inList =
     if null inList then error ("\n\nError--No input parameters.\nParameters that can be set:"
         ++ "\n\tReconcile=(eun|cun|strict|majority|Adams) "
         ++ "\n\tCompare=combinable|identity "
         ++ "\n\tThreshold=0-100 "
         ++ "\n\tOutFormat=Dot|FENewick"
+        ++ "\n\tConnect=True|False"
         ++ "\n\tOutFile=filename"
         ++ "\n\tInput files (may include wildcards) without preceeding \"option=\""
         ++ "\n\tRequires at least a single input graph file (and at least two input graphs)."
@@ -120,13 +121,14 @@ processCommands inList =
             inputFileList = getInputFileNames inTextList
             method = getMethod inTextListLC
             compareMethod = getCompareMethod inTextListLC
+            connect = getConnect inTextListLC
             threshold = if method == "cun" then 100 else getThreshold inTextListLC
             outFormat = getOutputFormat inTextListLC
             outFile =  getOutputFileName (zip inTextListLC inTextList)
         in
         if null notMatchedList then
-            trace ("\nInput arguments: " ++ show inList ++ "\nProgram options: " ++ show (method, compareMethod, threshold, outFormat, outFile, inputFileList))
-            (method, compareMethod, threshold, outFormat, outFile, inputFileList)
+            trace ("\nInput arguments: " ++ show inList ++ "\nProgram options: " ++ show (method, compareMethod, threshold, connect, outFormat, outFile, inputFileList))
+            (method, compareMethod, threshold, connect, outFormat, outFile, inputFileList)
         else error ("\n\nError(s) in command specification (case insensitive):\n" ++ getCommandErrorString notMatchedList)
 
 
@@ -153,11 +155,10 @@ getMethod inTextList =
             else error ("Reconcile option \'" ++ option ++ "\' not recognized (eun|cun|majority|strict)")
         else getMethod (tail inTextList)
 
--- | getCompareMethod returns compareMethod value or dedfault otherwise
+-- | getCompareMethod returns compareMethod value or default otherwise
 -- assumes in lower case
 getCompareMethod :: [T.Text] -> String
 getCompareMethod inTextList =
-
     if null inTextList then trace "Warning: No compare specified defaulting to \'combinable\'" "combinable"
     else
         let firstCommand = T.takeWhile (/= '=') $ head inTextList
@@ -167,9 +168,27 @@ getCompareMethod inTextList =
             let option = T.unpack firstOption
             in
             if option == "combinable" then "combinable"
-            else if option == "identity" then"identity"
+            else if option == "identity" then "identity"
             else error ("Compare option \'" ++ option ++ "\' not recognized (combinable|identity)")
         else getCompareMethod (tail inTextList)
+
+-- | getConect returns connect value or default otherwise (True|False)
+-- assumes in lower case
+getConnect :: [T.Text] -> Bool
+getConnect inTextList =
+    if null inTextList then trace "Warning: No connect value specified defaulting to \'False\'" False
+    else
+        let firstCommand = T.takeWhile (/= '=') $ head inTextList
+            firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
+        in
+        if firstCommand == T.pack "connect" then
+            let option = T.unpack firstOption
+            in
+            if option == "true" then True
+            else if option == "false" then False
+            else error ("Connect option \'" ++ option ++ "\' not recognized (True|False)")
+        else getConnect (tail inTextList)
+
 
 -- | getThreshold returns threshold value or default otherwise
 -- assumes in lower case
