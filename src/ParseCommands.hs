@@ -122,7 +122,9 @@ processCommands inList =
             method = getMethod inTextListLC
             compareMethod = getCompareMethod inTextListLC
             connect = getConnect inTextListLC
-            threshold = if method == "cun" then 100 else getThreshold inTextListLC
+            threshold = if method == "cun" then 0 
+                        else if method == "strict" then 100 
+                        else getThreshold inTextListLC
             outFormat = getOutputFormat inTextListLC
             outFile =  getOutputFileName (zip inTextListLC inTextList)
         in

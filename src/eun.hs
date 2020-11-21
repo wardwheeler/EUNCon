@@ -564,12 +564,12 @@ getGraphCompatibleList comparison inBVListList bvToCheck =
 -- | getCompatibleList takes a list of graph node bitvectors as lists
 -- retuns a list of lists of bitvectors where the length of the list of the individual bitvectors
 -- is the number of graphs it is compatible with
-getCompatibleList :: String -> [[BV.BV]] -> Bool -> BV.BV -> [[BV.BV]]
-getCompatibleList comparison inBVListList connectComponents urRoot =
+getCompatibleList :: String -> [[BV.BV]] -> [[BV.BV]]
+getCompatibleList comparison inBVListList =
   if null inBVListList then error "Null list of list og bitvectors in getCompatibleList"
   else
-    let uniqueBVList = if connectComponents then nub $ urRoot : concat inBVListList 
-                       else nub $ concat inBVListList
+    let uniqueBVList = nub $ concat inBVListList {-if connectComponents then nub $ urRoot : concat inBVListList 
+                       else nub $ concat inBVListList-}
         bvCompatibleListList = parmap rdeepseq (getGraphCompatibleList comparison inBVListList) uniqueBVList
     in
     bvCompatibleListList
@@ -577,22 +577,24 @@ getCompatibleList comparison inBVListList connectComponents urRoot =
 -- | getThresholdNodes takes a threshold and keeps those unique objects present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
 -- urRoot added to make sure there will be a single connected graph
-getThresholdNodes :: String -> Int -> Int -> [[G.LNode BV.BV]] -> Bool -> BV.BV -> ([G.LNode BV.BV], [Double])
-getThresholdNodes comparison thresholdInt numLeaves objectListList connectComponents urRoot
+getThresholdNodes :: String -> Int -> Int -> [[G.LNode BV.BV]] -> ([G.LNode BV.BV], [Double])
+getThresholdNodes comparison thresholdInt numLeaves objectListList
   | thresholdInt < 0 || thresholdInt > 100 = error "Threshold must be in range [0,100]"
   | null objectListList = error "Empty list of object lists in getThresholdObjects"
   | otherwise =
     let numGraphs = fromIntegral $ length objectListList
         indexList = [numLeaves..(numLeaves + length objectGroupList - 1)]
         objectGroupList
-          | comparison == "combinable" = getCompatibleList comparison (fmap (fmap snd) objectListList) connectComponents urRoot
-          | comparison == "identity" = 
+          | comparison == "combinable" = getCompatibleList comparison (fmap (fmap snd) objectListList)
+          | comparison == "identity" = Data.List.group $ sort (snd <$> concat objectListList)
+              {-
               if not connectComponents then Data.List.group $ sort (snd <$> concat objectListList)
               else 
                 let noRootList = sort $ filter (/= urRoot ) (snd <$> concat objectListList)
                     urRootList = replicate (length objectListList) urRoot
                 in
                 Data.List.group (urRootList ++ noRootList)
+                -}
           | otherwise = error ("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
         uniqueList = zip indexList (fmap head objectGroupList)
         frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
@@ -719,7 +721,7 @@ addUrRootAndEdges inGraph =
     let origLabEdges = G.labEdges inGraph
         numOrigVerts = length origLabVerts
         newRoot = (numOrigVerts, ("HTU" ++ show numOrigVerts))
-        newEdgeList = zip3 (replicate (length origRootList) numOrigVerts) origRootList (replicate (length origRootList) 1.0)
+        newEdgeList = zip3 (replicate (length origRootList) numOrigVerts) origRootList (replicate (length origRootList) 0.0)
     in
     G.mkGraph (origLabVerts ++ [newRoot]) (origLabEdges ++ newEdgeList)
 
@@ -817,30 +819,36 @@ main =
     let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams adamsII
     let adamsIIOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph adamsII] False False
 
+    {-
     -- Creatr Ur-Root for strict and majority consensi.  For non-overlapping leaf sets in "super" graphs
     let urRoot = BV.or $ concatMap (fmap snd . G.labNodes) processedGraphs
+    -}
 
+    {-
     -- Create strict consensus
     let nodeBVSet = foldl1' (combineComponents compareMethod) (fmap (fmap snd . G.labNodes) processedGraphs) 
-    let intersectionBVs = if connectComponents then nodeBVSet `union` [urRoot] else nodeBVSet
+    let intersectionBVs =nodeBVSet -- if connectComponents then nodeBVSet `union` [urRoot] else nodeBVSet
     let numberList = [0..(length intersectionBVs - 1)]
     let intersectionNodes = zip numberList intersectionBVs -- `union` [(length intersectionBVs, urRoot)]
     let strictConInfo =  "There are " ++ show (length intersectionNodes) ++ " nodes present in all input graphs"
     let intersectionEdges = nub $ concat $ parmap rdeepseq  (getIntersectionEdges intersectionNodes) intersectionNodes
     let strictConsensusGraph = makeEUN intersectionNodes intersectionEdges (G.mkGraph intersectionNodes intersectionEdges)
-    let labelledConsensusGraph = addGraphLabels strictConsensusGraph totallLeafSet
+    let labelledConsensusGraph' = addGraphLabels strictConsensusGraph totallLeafSet
+    let labelledConsensusGraph = if not connectComponents then labelledConsensusGraph' else addUrRootAndEdges labelledConsensusGraph'
     let strictConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledConsensusGraph
     let strictConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledConsensusGraph] False False
+    -}
 
     -- Create thresholdMajority rule Consensus and dot string
     -- vertex-based CUN-> Majority rule ->Strict
-    let (thresholdNodes', nodeFreqs) = getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) connectComponents urRoot
+    let (thresholdNodes', nodeFreqs) = getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) 
     let thresholdNodes = leafNodes ++ thresholdNodes'
     let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges thresholdNodes) thresholdNodes
     let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges)
     let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in " ++ (show threshold ++ "%") ++ " of input graphs"
     let labelledTresholdConsensusGraph' = addGraphLabels thresholdConsensusGraph totallLeafSet
-    let labelledTresholdConsensusGraph = addEdgeFrequenciesToGraph labelledTresholdConsensusGraph' (length leafNodes) nodeFreqs
+    let labelledTresholdConsensusGraph'' = addEdgeFrequenciesToGraph labelledTresholdConsensusGraph' (length leafNodes) nodeFreqs
+    let labelledTresholdConsensusGraph = if not connectComponents then labelledTresholdConsensusGraph'' else addUrRootAndEdges labelledTresholdConsensusGraph''
     let thresholdConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams labelledTresholdConsensusGraph
     let thresholdConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledTresholdConsensusGraph] True False
 
@@ -873,10 +881,11 @@ main =
         --else 
         do {hPutStrLn stderr thresholdEUNInfo; if outputFormat=="dot" then writeFile outDOT thresholdEUNOutDotString else writeFile outFEN thresholdEUNOutFENString}
     else if method == "adams" then do {hPutStrLn stderr adamsIIInfo; if outputFormat=="dot" then writeFile outDOT adamsIIOutDotString else writeFile outFEN adamsIIOutFENString}
-    else if (method == "majority") || (method == "cun") then
-        if threshold == 100 then do {hPutStrLn stderr strictConInfo; if outputFormat=="dot" then writeFile outDOT strictConsensusOutDotString else writeFile outFEN strictConsensusOutFENString}
-        else do {hPutStrLn stderr thresholdConInfo; if outputFormat=="dot" then writeFile outDOT thresholdConsensusOutDotString else writeFile outFEN thresholdConsensusOutFENString}
-    else if method == "strict" then do {hPutStrLn stderr strictConInfo; if outputFormat=="dot" then writeFile outDOT strictConsensusOutDotString else writeFile outFEN strictConsensusOutFENString}
+    else if (method == "majority") || (method == "cun") || (method == "strict") then
+        --if threshold == 100 then do {hPutStrLn stderr strictConInfo; if outputFormat=="dot" then writeFile outDOT strictConsensusOutDotString else writeFile outFEN strictConsensusOutFENString}
+        --else 
+        do {hPutStrLn stderr thresholdConInfo; if outputFormat=="dot" then writeFile outDOT thresholdConsensusOutDotString else writeFile outFEN thresholdConsensusOutFENString}
+    --else if method == "strict" then do {hPutStrLn stderr strictConInfo; if outputFormat=="dot" then writeFile outDOT strictConsensusOutDotString else writeFile outFEN strictConsensusOutFENString}
     else error ("Graph combination method " ++ method ++ " is not implemented")
 
     hPutStrLn stderr "\nDone"
