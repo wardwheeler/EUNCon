@@ -101,21 +101,21 @@ getCommandErrorString noMatchList =
 processCommands :: [String] -> (String, String, Int, Bool, Bool, String, String, [String])
 processCommands inList =
     if null inList then error ("\n\nError--No input parameters.\nParameters that can be set:"
-        ++ "\n\tReconcile=(eun|cun|strict|majority|Adams) "
-        ++ "\n\tCompare=combinable|identity "
-        ++ "\n\tThreshold=0-100 "
-        ++ "\n\tOutFormat=Dot|FENewick"
-        ++ "\n\tConnect=True|False"
-        ++ "\n\tEdgeLabel=True|False"
-        ++ "\n\tOutFile=filename"
+        ++ "\n\tReconcile:eun|cun|strict|majority|Adams "
+        ++ "\n\tCompare:combinable|identity "
+        ++ "\n\tThreshold:0-100 (must be integer)"
+        ++ "\n\tOutFormat:Dot|FENewick"
+        ++ "\n\tConnect:True|False"
+        ++ "\n\tEdgeLabel:True|False"
+        ++ "\n\tOutFile:filename"
         ++ "\n\tInput files (may include wildcards) without preceeding \"option=\""
         ++ "\n\tRequires at least a single input graph file (and at least two input graphs)."
         ++ "\n\tDefault values reconcile=EUN, compare=combinable threeshold=0, outformat=dot, outfile=euncon.out\n\n")
     else
         let inTextList = fmap T.pack inList
             inTextListLC = fmap T.toLower inTextList
-            commandList = filter (T.any (== '=')) inTextListLC
-            stringCommands = fmap (T.unpack . T.takeWhile (/= '=')) commandList
+            commandList = filter (T.any (== ':')) inTextListLC
+            stringCommands = fmap (T.unpack . T.takeWhile (/= ':')) commandList
             (editCostList, matchList) = unzip $ fmap (getBestMatch (maxBound :: Int ,"no suggestion") allowedCommandList) stringCommands
             commandMatch = zip3 editCostList stringCommands matchList
             notMatchedList = filter ((>0).fst3) commandMatch
@@ -136,9 +136,9 @@ processCommands inList =
         else error ("\n\nError(s) in command specification (case insensitive):\n" ++ getCommandErrorString notMatchedList)
 
 
--- | getInputFileNames returns names not including a parameter '='
+-- | getInputFileNames returns names not including a parameter ':'
 getInputFileNames :: [T.Text] -> [String]
-getInputFileNames inTextList = T.unpack <$> filter (T.all (/= '=')) inTextList
+getInputFileNames inTextList = T.unpack <$> filter (T.all (/= ':')) inTextList
 
 -- | getMethod returns method value or dedfault otherwise
 -- assumes in lower case
@@ -146,8 +146,8 @@ getMethod :: [T.Text] -> String
 getMethod inTextList =
     if null inTextList then trace "Warning: No reconcile specified defaulting to \'eun\'" "eun"
     else
-        let firstCommand = T.takeWhile (/= '=') $ head inTextList
-            firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
+        let firstCommand = T.takeWhile (/= ':') $ head inTextList
+            firstOption = T.tail $ T.dropWhile (/= ':') $ head inTextList
         in
         if firstCommand == T.pack "reconcile" then
             let option = T.unpack firstOption
@@ -165,8 +165,8 @@ getCompareMethod :: [T.Text] -> String
 getCompareMethod inTextList =
     if null inTextList then trace "Warning: No compare specified defaulting to \'combinable\'" "combinable"
     else
-        let firstCommand = T.takeWhile (/= '=') $ head inTextList
-            firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
+        let firstCommand = T.takeWhile (/= ':') $ head inTextList
+            firstOption = T.tail $ T.dropWhile (/= ':') $ head inTextList
         in
         if firstCommand == T.pack "compare" then
             let option = T.unpack firstOption
@@ -182,8 +182,8 @@ getConnect :: [T.Text] -> Bool
 getConnect inTextList =
     if null inTextList then trace "Warning: No connect value specified defaulting to \'False\'" False
     else
-        let firstCommand = T.takeWhile (/= '=') $ head inTextList
-            firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
+        let firstCommand = T.takeWhile (/= ':') $ head inTextList
+            firstOption = T.tail $ T.dropWhile (/= ':') $ head inTextList
         in
         if firstCommand == T.pack "connect" then
             let option = T.unpack firstOption
@@ -199,8 +199,8 @@ getEdgeLabel :: [T.Text] -> Bool
 getEdgeLabel inTextList =
     if null inTextList then trace "Warning: No edgeLabel value specified defaulting to \'True\'" True
     else
-        let firstCommand = T.takeWhile (/= '=') $ head inTextList
-            firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
+        let firstCommand = T.takeWhile (/= ':') $ head inTextList
+            firstOption = T.tail $ T.dropWhile (/= ':') $ head inTextList
         in
         if firstCommand == T.pack "edgelabel" then
             let option = T.unpack firstOption
@@ -217,8 +217,8 @@ getThreshold :: [T.Text] -> Int
 getThreshold inTextList =
     if null inTextList then trace "Warning: No threshold specified defaulting to \'0\'"  0 :: Int
     else
-        let firstCommand = T.takeWhile (/= '=') $ head inTextList
-            firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
+        let firstCommand = T.takeWhile (/= ':') $ head inTextList
+            firstOption = T.tail $ T.dropWhile (/= ':') $ head inTextList
         in
         if firstCommand == T.pack "threshold" then read (T.unpack firstOption) :: Int
         else getThreshold (tail inTextList)
@@ -229,8 +229,8 @@ getOutputFormat :: [T.Text] -> String
 getOutputFormat inTextList =
     if null inTextList then trace "Warning: No output format specified defaulting to \'dot\'" "dot"
     else
-        let firstCommand = T.takeWhile (/= '=') $ head inTextList
-            firstOption = T.tail $ T.dropWhile (/= '=') $ head inTextList
+        let firstCommand = T.takeWhile (/= ':') $ head inTextList
+            firstOption = T.tail $ T.dropWhile (/= ':') $ head inTextList
         in
         if firstCommand == T.pack "outformat" then
             let outFormat = T.unpack firstOption
@@ -247,8 +247,8 @@ getOutputFileName inTextPairList =
     if null inTextPairList then trace "Warning: No output file name specified defaulting to \'euncon.out\'" "euncon.out"
     else
         let (textListLC, textList) = head inTextPairList
-            firstCommand = T.takeWhile (/= '=') textListLC
-            firstOption = T.tail $ T.dropWhile (/= '=') textList
+            firstCommand = T.takeWhile (/= ':') textListLC
+            firstOption = T.tail $ T.dropWhile (/= ':') textList
         in
         if firstCommand == T.pack "outfile" then T.unpack firstOption
         else getOutputFileName (tail inTextPairList)
