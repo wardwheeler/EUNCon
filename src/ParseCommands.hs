@@ -70,7 +70,7 @@ editDistance xs ys = table ! (m,n)
 
 -- | allowedCommandList list of allowable commands
 allowedCommandList :: [String]
-allowedCommandList = ["reconcile", "compare", "threshold", "outformat", "outfile", "connect"]
+allowedCommandList = ["reconcile", "compare", "threshold", "outformat", "outfile", "connect", "edgelabel"]
 
 -- | getBestMatch compares input to allowable commands and checks if in list and if not outputs
 -- closest match
