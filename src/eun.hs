@@ -782,7 +782,7 @@ main =
     let unionEdges = addAndReIndexEdges "unique" unionNodes (concatMap G.labEdges (tail processedGraphs)) (G.labEdges $ head processedGraphs)
 
     -- Total graph of all nodes to start
-    hPutStrLn stderr ("\nTotal Graph with " ++ show (length unionNodes) ++ " nodes and " ++ show (length unionEdges) ++ " edges")
+    hPutStrLn stderr ("\nInput-based total Graph with " ++ show (length unionNodes) ++ " nodes and " ++ show (length unionEdges) ++ " edges")
 
     --
     -- Create Adams II consensus
@@ -800,7 +800,8 @@ main =
     let thresholdNodes = leafNodes ++ thresholdNodes'
     let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges thresholdNodes) thresholdNodes
     let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges)
-    let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in " ++ (show threshold ++ "%") ++ " of input graphs"
+    let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in >= " ++ (show threshold ++ "%") ++ " of input graphs and " ++ (show $ length thresholdEdges) ++ " candidate edges"
+                          ++ " yielding a final graph with " ++ (show $ length (G.labNodes thresholdConsensusGraph)) ++ " nodes and " ++ (show $ length (G.labEdges thresholdConsensusGraph)) ++ " edges"
     
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
     let labelledTresholdConsensusGraph' = addGraphLabels thresholdConsensusGraph totallLeafSet
@@ -823,6 +824,7 @@ main =
     -- Remove unnconnected HTU nodes via postorder pass from leaves
     let thresholdEUNGraph = verticesByPostorder thresholdEUNGraph' leafNodes S.empty
     let thresholdEUNInfo =  "\nThreshold EUN deleted " ++ show (length unionEdges - length (G.labEdges thresholdEUNGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
+                            ++ " for a final graph with " ++ (show $ length (G.labNodes thresholdEUNGraph)) ++ " nodes and " ++ (show $ length (G.labEdges thresholdEUNGraph)) ++ " edges"
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
     let thresholdLabelledEUNGraph' = addGraphLabels thresholdEUNGraph totallLeafSet
     let thresholdLabelledEUNGraph'' = addEdgeFrequenciesToGraph thresholdLabelledEUNGraph' (length leafNodes) edgeFreqs 
