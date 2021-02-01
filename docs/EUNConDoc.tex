@@ -48,7 +48,6 @@
 	
 	
 	\section{Introduction}
-	EUNCon is a program 
 	This is the first version of documentation for the program EUNCon.  This program is designed to produce a variety of 
 	phylogenetic supergraphs from input graphs in a variety of formats and output the result in multiple formats as well.
 	All source code, precompiled binaries, test data, and documentation are available from \url{https://githib.com/wardwheeler/EUNCon}.
@@ -68,9 +67,8 @@
 	using Graphviz (e.g. dot, neanto, twopi) into pdf, jpg and a large variety of other formats. FEN outputs of 
 	single trees (ie forest with a single component) are rendered as enewick.  Newick files can be visualized in a 
 	large number of programs (e.g. FigTree; \url{http://tree.bio.ed.ac.uk/software/figtree/})
-	
-	Example dot command line:
-	\quote{dot -Tpdf myDotFile.dot $>$ myDotFile.pdf}\\
+	\bigskip
+	\\Example dot command line: \\dot -Tpdf myDotFile.dot $>$ myDotFile.pdf\\
 	
 	For some reason on OSX the `pdf' option does not seem to work.  You can use `-Tps2' and that will generate a postscript file that preview can read and convert to pdf.
 	
@@ -107,13 +105,13 @@
 
 	
 	\section{Program Use}
-	The program is invoked from the command-line as in:
-	\quote{euncon reconcile:eun threshold:0 outfile:myOutput graphFile1.dot graphFile2.tre}
+	The program is invoked from the command-line as in:\\
+	euncon reconcile:eun threshold:0 outfile:myOutput graphFile1.dot graphFile2.tre\\
 	
 	
 	\subsection{Execution in Parallel}
-	By default the program will execute using a single process core.  By specifying the options `+RTS -NX -RTS' where `X' is the number of processors offered to the program. These are specified after the program as in :
-	\quote{euncon +RTS -N4 -RTS }other options...  
+	By default the program will execute using a single process core.  By specifying the options `+RTS -NX -RTS' where `X' is the number of processors offered to the program. These are specified after the program as in (for 4 parallel threads):\\
+	euncon +RTS -N4 -RTS }other options...  \\
 	
 	\section*{Acknowledgments}
 	The author would like to thank NSF REU DBI-1358465, DARPA SIMPLEX N66001-15-C-4039, and Robert J. Kleberg Jr. and Helen C. Kleberg foundation grant ``Mechanistic Analyses of Pancreatic Cancer Evolution'' for financial support.  
