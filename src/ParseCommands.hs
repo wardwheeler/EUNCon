@@ -156,7 +156,7 @@ getMethod inTextList =
             else if option == "cun" then "cun"
             else if option == "majority" then "majority"
             else if option == "strict" then "strict"
-            else if option == "adams" then "strict"
+            else if option == "adams" then "adams"
             else error ("Reconcile option \'" ++ option ++ "\' not recognized (eun|cun|majority|strict)")
         else getMethod (tail inTextList)
 
