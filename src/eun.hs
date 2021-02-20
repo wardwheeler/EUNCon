@@ -476,14 +476,36 @@ addGraphLabels inGraph totallLeafSet
   -- trace ("Relabelled EUN : " ++ (showGraph $ G.mkGraph newNodes newEdges) ++ " from " ++ (show totallLeafSet))
   G.mkGraph newNodes newEdges
 
+-- | intermediateNodeExists takes two node bitvetors and the full bitvector list 
+-- and checks to see if there is an intermediate node  between first two that would 
+-- remove need for the edge between the first two. 
+-- This should reduce time complexity of vertex-based reconciliation to O(n^3) from O(n^4)
+intermediateNodeExists :: BV.BV -> BV.BV -> [BV.BV] -> Bool
+intermediateNodeExists aBV cBV fullNodeBVList = 
+  if null fullNodeBVList then False
+  else 
+    let bBV = head fullNodeBVList
+        leftIntersection = BV.and [aBV, bBV]
+        rightIntersection = BV.and [bBV, cBV]
+    in
+    if (bBV == aBV) || (bBV == cBV) then intermediateNodeExists aBV cBV (tail fullNodeBVList)
+    else if (leftIntersection == bBV) && (rightIntersection == cBV) then True
+    else intermediateNodeExists aBV cBV (tail fullNodeBVList)
+
+
+
 -- | getIntersectionEdges takes a node A and cretes directed edges to each other edge in [B]
 -- with rulkesLEdge
 --  if A intesect B = empty then no edge
 --  else if A intesect B = B then create edge A->B
 --  else if A intesect B = A then create edge B->A
 --  else --can't happen
-getIntersectionEdges ::[G.LNode BV.BV] -> G.LNode BV.BV -> [G.LEdge (BV.BV,BV.BV)]
-getIntersectionEdges bNodeList aNode =
+-- Added in check for intermediate (by bitvector) node that shold obviate need for 
+-- breadth first search for vertex-based reconciliation
+--  if A > B and B > C and A intersect B = B and B intersect C = C 
+--    then edge  A->C is redundant and is not added to edge set
+getIntersectionEdges ::[BV.BV] -> [G.LNode BV.BV] -> G.LNode BV.BV -> [G.LEdge (BV.BV,BV.BV)]
+getIntersectionEdges fullNodeBVList bNodeList aNode =
   if null bNodeList then []
   else
       let (aIndex, aBV) = aNode
@@ -491,9 +513,11 @@ getIntersectionEdges bNodeList aNode =
           intersection = BV.and [aBV, bBV]
       in
       -- only do the directed 1/2 so no nub issues later
-      if (bBV >= aBV) || (intersection == 0) then getIntersectionEdges (tail bNodeList) aNode
-      else if intersection == bBV then (aIndex, bIndex, (aBV, bBV)) : getIntersectionEdges (tail bNodeList) aNode
-      else  getIntersectionEdges (tail bNodeList) aNode
+      if (bBV >= aBV) || (intersection == 0) then getIntersectionEdges fullNodeBVList (tail bNodeList) aNode
+      else if intersection == bBV then 
+        if (intermediateNodeExists aBV bBV fullNodeBVList) then getIntersectionEdges fullNodeBVList (tail bNodeList) aNode
+        else (aIndex, bIndex, (aBV, bBV)) : getIntersectionEdges fullNodeBVList (tail bNodeList) aNode
+      else  getIntersectionEdges fullNodeBVList (tail bNodeList) aNode
 
 -- | combinable tales a list of bitvecotrs and a single bitvector
 -- and checks each of the first to see if combinable
@@ -798,8 +822,9 @@ main =
     --
     let (thresholdNodes', nodeFreqs) = getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) 
     let thresholdNodes = leafNodes ++ thresholdNodes'
-    let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges thresholdNodes) thresholdNodes
-    let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges)
+    let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges (fmap snd thresholdNodes) thresholdNodes) thresholdNodes
+    let thresholdConsensusGraph = G.mkGraph thresholdNodes thresholdEdges
+    -- let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges)
     let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in >= " ++ (show threshold ++ "%") ++ " of input graphs and " ++ (show $ length thresholdEdges) ++ " candidate edges"
                           ++ " yielding a final graph with " ++ (show $ length (G.labNodes thresholdConsensusGraph)) ++ " nodes and " ++ (show $ length (G.labEdges thresholdConsensusGraph)) ++ " edges"
     
