@@ -492,8 +492,6 @@ intermediateNodeExists aBV cBV fullNodeBVList =
     else if (leftIntersection == bBV) && (rightIntersection == cBV) then True
     else intermediateNodeExists aBV cBV (tail fullNodeBVList)
 
-
-
 -- | getIntersectionEdges takes a node A and cretes directed edges to each other edge in [B]
 -- with rulkesLEdge
 --  if A intesect B = empty then no edge
@@ -823,9 +821,10 @@ main =
     let (thresholdNodes', nodeFreqs) = getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) 
     let thresholdNodes = leafNodes ++ thresholdNodes'
     let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges (fmap snd thresholdNodes) thresholdNodes) thresholdNodes
-    let thresholdConsensusGraph = G.mkGraph thresholdNodes thresholdEdges
-    -- let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges)
-    let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in >= " ++ (show threshold ++ "%") ++ " of input graphs and " ++ (show $ length thresholdEdges) ++ " candidate edges"
+    let numPossibleEdges =  (((length thresholdNodes) * (length thresholdNodes)) - (length thresholdNodes)) `div` 2
+    let thresholdConsensusGraph = G.mkGraph thresholdNodes thresholdEdges -- O(n^3) 
+    -- let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges) -- O(n^4)
+    let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in >= " ++ (show threshold ++ "%") ++ " of input graphs and " ++ (show numPossibleEdges) ++ " candidate edges"
                           ++ " yielding a final graph with " ++ (show $ length (G.labNodes thresholdConsensusGraph)) ++ " nodes and " ++ (show $ length (G.labEdges thresholdConsensusGraph)) ++ " edges"
     
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
