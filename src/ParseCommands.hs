@@ -237,8 +237,8 @@ getOutputFormat inTextList =
             let outFormat = T.unpack firstOption
             in
             if outFormat == "dot" then "dot"
-            else if outFormat == "fenewick" then "fennewick"
-            else error ("Output format \'" ++ outFormat ++ "\' not recognized (dot|FENewickewick)")
+            else if outFormat == "fenewick" then "fenewick"
+            else error ("Output format \'" ++ outFormat ++ "\' not recognized (dot|FENewick)")
         else getOutputFormat (tail inTextList)
 
 -- | getOutputFileName returns output file name or default otherwise
