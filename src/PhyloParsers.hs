@@ -722,6 +722,13 @@ component2Newick fglGraph writeEdgeWeight writeNodeLable (index, label) =
 makeLabel :: Maybe T.Text -> T.Text
 makeLabel = fromMaybe T.empty
 
+-- | fix for newick lack of paren in specific situation--inelegant
+endStart :: T.Text
+endStart = T.pack ")("
+
+newEndStart :: T.Text
+newEndStart = T.pack "),("
+
 -- | getNewick takes an edge of a graph and either cretes the text if a leaf
 -- or recurses down tree if has descendents, adding  commas, outper parens, labels, and edge weights if they exist.
 -- need to filter redundant subtrees later at the forest level (Can have shared node between rooted components)
@@ -749,13 +756,16 @@ getNewick fglGraph writeEdgeWeight writeNodeLable inEdgeList
         middlePartList = getNewick fglGraph writeEdgeWeight writeNodeLable (G.out fglGraph curNodeIndex)
     in
     if length middlePartList == 1 then  -- outdegree 1
-      if not writeEdgeWeight then T.concat [T.singleton '(', head middlePartList, T.singleton ')', nodeLabel] : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
-      else T.concat [T.singleton '(', head middlePartList, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel] : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
+      let middleText = T.replace endStart newEndStart (head middlePartList)
+      in
+      if not writeEdgeWeight then T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel]  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
+      else T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel]  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
     else -- multiple children, outdegree > 1
       let middleText = T.intercalate (T.singleton ',') middlePartList
       in
       if not writeEdgeWeight then T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel]  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
       else T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel] : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
+      
 
 -- |  stringGraph2TextGraph take P.Gr String a and converts to P.Gr Text a
 stringGraph2TextGraph :: P.Gr String b -> P.Gr T.Text b
