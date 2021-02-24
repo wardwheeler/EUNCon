@@ -70,7 +70,7 @@ editDistance xs ys = table ! (m,n)
 
 -- | allowedCommandList list of allowable commands
 allowedCommandList :: [String]
-allowedCommandList = ["reconcile", "compare", "threshold", "outformat", "outfile", "connect", "edgelabel"]
+allowedCommandList = ["reconcile", "compare", "threshold", "outformat", "outfile", "connect", "edgelabel", "vertexlabel"]
 
 -- | getBestMatch compares input to allowable commands and checks if in list and if not outputs
 -- closest match
@@ -98,7 +98,7 @@ getCommandErrorString noMatchList =
 -- | processCommands takes a list of strings and returns values of commands for proram execution
 -- including defaults
 -- checks commands for misspellings
-processCommands :: [String] -> (String, String, Int, Bool, Bool, String, String, [String])
+processCommands :: [String] -> (String, String, Int, Bool, Bool, Bool, String, String, [String])
 processCommands inList =
     if null inList then error ("\n\nError--No input parameters.\nParameters that can be set:"
         ++ "\n\tReconcile:eun|cun|strict|majority|Adams "
@@ -107,6 +107,7 @@ processCommands inList =
         ++ "\n\tOutFormat:Dot|FENewick"
         ++ "\n\tConnect:True|False"
         ++ "\n\tEdgeLabel:True|False"
+        ++ "\n\tVertexLabel:True|False"
         ++ "\n\tOutFile:filename"
         ++ "\n\tInput files (may include wildcards) without preceeding \"option=\""
         ++ "\n\tRequires at least a single input graph file (and at least two input graphs)."
@@ -124,6 +125,7 @@ processCommands inList =
             compareMethod = getCompareMethod inTextListLC
             connect = getConnect inTextListLC
             edgeLabel = getEdgeLabel inTextListLC
+            vertexLabel = getVertexLabel inTextListLC
             threshold = if method == "cun" then 0 
                         else if method == "strict" then 100 
                         else getThreshold inTextListLC
@@ -131,8 +133,8 @@ processCommands inList =
             outFile =  getOutputFileName (zip inTextListLC inTextList)
         in
         if null notMatchedList then
-            trace ("\nInput arguments: " ++ show inList ++ "\nProgram options: " ++ show (method, compareMethod, threshold, connect, edgeLabel, outFormat, outFile, inputFileList))
-            (method, compareMethod, threshold, connect, edgeLabel, outFormat, outFile, inputFileList)
+            trace ("\nInput arguments: " ++ show inList ++ "\nProgram options: " ++ show (method, compareMethod, threshold, connect, edgeLabel, vertexLabel, outFormat, outFile, inputFileList))
+            (method, compareMethod, threshold, connect, edgeLabel, vertexLabel, outFormat, outFile, inputFileList)
         else error ("\n\nError(s) in command specification (case insensitive):\n" ++ getCommandErrorString notMatchedList)
 
 
@@ -210,6 +212,24 @@ getEdgeLabel inTextList =
             else if option == "false" then False
             else error ("EdgeLAbel option \'" ++ option ++ "\' not recognized (True|False)")
         else getEdgeLabel (tail inTextList)
+
+-- | getVertexLabel returns edgeLabel value or default otherwise (True|False)
+-- assumes in lower case
+getVertexLabel :: [T.Text] -> Bool
+getVertexLabel inTextList =
+    if null inTextList then trace "Warning: No vertexLabel value specified defaulting to \'False\'" False
+    else
+        let firstCommand = T.takeWhile (/= ':') $ head inTextList
+            firstOption = T.tail $ T.dropWhile (/= ':') $ head inTextList
+        in
+        if firstCommand == T.pack "vertexlabel" then
+            let option = T.unpack firstOption
+            in
+            if option == "true" then True
+            else if option == "false" then False
+            else error ("VertexLabel option \'" ++ option ++ "\' not recognized (True|False)")
+        else getVertexLabel (tail inTextList)
+
 
 
 -- | getThreshold returns threshold value or default otherwise

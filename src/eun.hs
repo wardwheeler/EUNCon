@@ -722,16 +722,22 @@ addUrRootAndEdges inGraph =
     in
     G.mkGraph (origLabVerts ++ [newRoot]) (origLabEdges ++ newEdgeList)
 
--- | changeEdgeLabels labelledTresholdConsensusGraph
-changeEdgeLabels :: (Show b) => Bool -> P.Gr a b -> P.Gr a String
-changeEdgeLabels keepLabel inGraph =
-  let inNodes = G.labNodes inGraph
+-- | changeVertexEdgeLabels keeps or removes vertex and edge labels
+changeVertexEdgeLabels :: (Show b) => Bool -> Bool -> P.Gr String b -> P.Gr String String
+changeVertexEdgeLabels keepVertexLabel keepEdgeLabel inGraph =
+  let inLabNodes = G.labNodes inGraph
+      degOutList = G.outdeg inGraph <$> G.nodes inGraph
+      nodeOutList = zip  degOutList inLabNodes
+      leafNodeList = fmap snd $ filter ((==0).fst) nodeOutList
+      nonLeafNodeList = fmap snd $ filter ((>0).fst) nodeOutList
+      newNonLeafNodes = if keepVertexLabel then nonLeafNodeList
+                        else zip (fmap fst nonLeafNodeList) (replicate (length nonLeafNodeList) "")
       inLabEdges = G.labEdges inGraph
       inEdges = fmap G.toEdge inLabEdges
-      newEdges = if keepLabel then fmap showLabel inLabEdges
+      newEdges = if keepEdgeLabel then fmap showLabel inLabEdges
                  else fmap (flip G.toLEdge "") inEdges
   in
-  G.mkGraph inNodes newEdges
+  G.mkGraph (leafNodeList ++ newNonLeafNodes) newEdges
     where showLabel (e,u,l) = (e,u,show l)
 
 -- | main driver
@@ -745,7 +751,7 @@ main =
     
     -- Process arguments
     args <- getArgs
-    let !(method, compareMethod, threshold, connectComponents, edgeLabel, outputFormat, outputFile, inputFileList) = PC.processCommands args
+    let !(method, compareMethod, threshold, connectComponents, edgeLabel, vertexLabel, outputFormat, outputFile, inputFileList) = PC.processCommands args
 
     hPutStrLn stderr ("\nGraph combination method: " ++ method ++ " at threshold " ++ show threshold ++ "\n")
 
@@ -811,8 +817,9 @@ main =
     --
     let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs
     let adamsIIInfo = "There are " ++ show (length $ G.nodes adamsII) ++ " nodes present in Adams II consensus"
-    let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams adamsII
-    let adamsIIOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph adamsII] False False
+    let adamsII' = changeVertexEdgeLabels vertexLabel False adamsII
+    let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams adamsII'
+    let adamsIIOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph adamsII'] False False
 
     --
     -- Create thresholdMajority rule Consensus and dot string
@@ -834,7 +841,7 @@ main =
     -- Add urRoot and edges to existing roots if there are unconnected components and connnectComponets is True
     let labelledTresholdConsensusGraph = if not connectComponents then labelledTresholdConsensusGraph'' 
                                          else addUrRootAndEdges labelledTresholdConsensusGraph''
-    let gvRelabelledConsensusGraph = changeEdgeLabels edgeLabel labelledTresholdConsensusGraph
+    let gvRelabelledConsensusGraph = changeVertexEdgeLabels vertexLabel edgeLabel labelledTresholdConsensusGraph
     let thresholdConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams gvRelabelledConsensusGraph
     let thresholdConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledTresholdConsensusGraph] edgeLabel False
 
@@ -858,7 +865,7 @@ main =
                                     else addUrRootAndEdges thresholdLabelledEUNGraph''
 
     -- Create EUN Dot file
-    let gvRelabelledEUNGraph = changeEdgeLabels edgeLabel thresholdLabelledEUNGraph
+    let gvRelabelledEUNGraph = changeVertexEdgeLabels vertexLabel edgeLabel thresholdLabelledEUNGraph
     let thresholdEUNOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams gvRelabelledEUNGraph -- eunGraph
     let thresholdEUNOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph thresholdLabelledEUNGraph] edgeLabel False
 
