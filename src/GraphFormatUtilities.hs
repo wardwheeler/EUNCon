@@ -124,7 +124,8 @@ module GraphFormatUtilities (forestEnhancedNewickStringList2FGLList,
                              textGraph2StringGraph,
                              showGraph,
                              relabelFGL,
-                             convertGraphToStrictText
+                             convertGraphToStrictText,
+                             splitVertexList
                             ) where
 
 import           Control.Parallel.Strategies
@@ -640,12 +641,39 @@ getDistToRoot fglGraph counter inNode  =
       in
       minimum parentPaths
 
+-- | modifyFGLForEnewick takes an FGl graphs and modified for enewick output
+-- 1) makes leaves that are indegree > 1 indegree 1 by creationg a new parent node with 
+--    the leafs parents as parents and teh leaf as single child
+-- 2) convertes each indegree > 1 node (non--leaf) to a series of indegree 1 nodes
+--    the first of which gets the first parent and all the children. Each subsequent
+--    parent gets a node with the name label and no children
+modifyFGLForEnewick :: P.Gr a b -> P.Gr a b
+modifyFGLForEnewick inGraph =
+  if G. isEmpty inGraph then error "Empty graph to modify in modifyFGLForEnewick"
+  else
+    let inNodes = G.labNodes inGraph
+        inEdges = G.labEdges inGraph
+        (rootNodes, leafNodes, nonLeafNodes) = splitVertexList inGraph
+        (nodesToAdd, edgesToAdd, nodesToDelete, edgesToDelete) = modifyInDeg2Leaves inGraph (length inNodes) leafNodes ([],[],[],[])
+        
+
+    in
+    inGraph
+
 
 -- | fgl2FEN take a fgl graph and returns a Forest Enhanced Newick Text
+--   Can be simplified along lines of Cardona with change to graph before 
+--   generating the rep bu splitting Hybrid nodes.  
+--   enewick requires (it seems) indegree 1 for leaves
+--   so need to creates nodes for indegree > 1 leaves
+-- these are not issues for dot files
 fgl2FEN :: (Show b) => Bool -> Bool -> P.Gr T.Text b -> T.Text
-fgl2FEN writeEdgeWeight writeNodeLable fglGraph =
-  if G.isEmpty fglGraph then error "Empty graph to convert in fgl2FEN"
+fgl2FEN writeEdgeWeight writeNodeLable inFGLGraph =
+  if G.isEmpty inFGLGraph then error "Empty graph to convert in fgl2FEN"
   else
+    -- Modify greaph for enewick stuff (leaves -> indegree 1, 'split' network nodes)
+    let fglGraph = modifyFGLForEnewick inFGLGraph
+    in
     -- get forest roots
     let numRoots = getRoots fglGraph (G.labNodes fglGraph)
         rootGraphSizeList = fmap (subTreeSize fglGraph 0 . (:[])) numRoots
@@ -671,11 +699,12 @@ fgl2FEN writeEdgeWeight writeNodeLable fglGraph =
         netNodeTreeTextList = fmap T.init $ fmap (component2Newick fglGraph writeEdgeWeight writeNodeLable) networkLabelledNodeList
         wholeRep' = removeDuplicateSubtreeText wholeRep netNodeTreeTextList
         -}
+        -- this can be removed if graph modified as in Cardona
         wholeRep' = removeDuplicateSubtreeText wholeRep networkLabelledNodeList fglGraph writeEdgeWeight writeNodeLable
     in
     -- trace ("fgl2FEN " ++ (show $ length numRoots) ++ " " ++ show rootOrder ++ "->" ++ show fenTextList) (
     if length fenTextList == 1 then wholeRep' -- just a single tree/network
-    else T.snoc (T.cons '<' wholeRep') '>'
+    else T.snoc (T.cons '<' wholeRep') '>' -- forest
     -- )
 
 
@@ -803,6 +832,30 @@ getLeafText (nodeIndex, nodeLabel) =
   let maybeTextLabel = findStrLabel nodeLabel
   in
  fromMaybe (T.pack $ show nodeIndex)  maybeTextLabel
+
+ -- | splitVertexList splits the vertices of a graph into ([root], [leaf], [non-leaf-non-root])
+splitVertexList ::  P.Gr a b -> ([G.LNode a], [G.LNode a], [G.LNode a])
+splitVertexList inGraph =
+  if G.isEmpty inGraph then ([],[],[])
+  else
+    let -- leaves
+        degOutList = G.outdeg inGraph <$> G.nodes inGraph
+        newNodePair = zip degOutList (G.labNodes inGraph)
+        leafPairList = filter ((==0).fst ) newNodePair
+        (_, leafList) = unzip leafPairList
+
+        -- roots
+        degInList = G.indeg inGraph <$> G.nodes inGraph
+        newRootPair = zip degInList (G.labNodes inGraph)
+        rootPairList = filter ((==0).fst ) newRootPair
+        (_, rootList) = unzip rootPairList
+
+        -- non-leaves, non-root
+        nodeTripleList = zip3 degOutList degInList (G.labNodes inGraph)
+        nonLeafTripleList = filter ((>0).fst3 ) $ filter ((>0).snd3 ) nodeTripleList
+        (_, _, nonLeafList) = unzip3 nonLeafTripleList   
+    in
+    (rootList, leafList, nonLeafList)
 
 -- | getLeafList returns leaf complement of graph from DOT file
 getLeafList ::  P.Gr Attributes Attributes -> [G.LNode T.Text]
