@@ -833,7 +833,7 @@ main =
                                          else addUrRootAndEdges labelledTresholdConsensusGraph''
     let gvRelabelledConsensusGraph = changeVertexEdgeLabels vertexLabel edgeLabel labelledTresholdConsensusGraph
     let thresholdConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams gvRelabelledConsensusGraph
-    let thresholdConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledTresholdConsensusGraph] edgeLabel False
+    let thresholdConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledTresholdConsensusGraph] edgeLabel True
 
     --
     -- Create threshold EUN and dot string, orignial EUN is threshold = 0
@@ -857,7 +857,7 @@ main =
     -- Create EUN Dot file
     let gvRelabelledEUNGraph = changeVertexEdgeLabels vertexLabel edgeLabel thresholdLabelledEUNGraph
     let thresholdEUNOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams gvRelabelledEUNGraph -- eunGraph
-    let thresholdEUNOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph thresholdLabelledEUNGraph] edgeLabel False
+    let thresholdEUNOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph thresholdLabelledEUNGraph] edgeLabel True
 
     --
     -- Output file
