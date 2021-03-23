@@ -523,7 +523,7 @@ combinable comparison bvList bvIn
           isCombinable = foldl' (&&) True intersectList
       in
       [bvIn | isCombinable]
-  | otherwise = error ("Comparison method " ++ comparison ++ " unrecongnized (combinable/identity)")
+  | otherwise = errorWithoutStackTrace("Comparison method " ++ comparison ++ " unrecongnized (combinable/identity)")
       where checkBitVectors a b
               = let c = BV.and [a, b] in
                   c == a || c == b || c == 0
@@ -547,7 +547,7 @@ combineComponents comparison firstList secondList
   | comparison == "identity" =
     if null firstList || null secondList then []
     else concat $ parmap rdeepseq (combinable comparison secondList) firstList
-  | otherwise = error ("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
+  | otherwise = errorWithoutStackTrace("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
 
 -- | getGraphCompatibleList takes a list of graphs (list of node Bitvectors)
 -- and retuns a list of each graph a bitvector node is compatible with
@@ -555,7 +555,7 @@ combineComponents comparison firstList secondList
 -- each bit vector node will have a list of length 1..number of graphs
 getGraphCompatibleList :: String -> [[BV.BV]] -> BV.BV-> [BV.BV]
 getGraphCompatibleList comparison inBVListList bvToCheck =
-  if null inBVListList then error "Null list of list og bitvectors in getGraphCompatibleList"
+  if null inBVListList then error "Null list of list of bitvectors in getGraphCompatibleList"
   else
     let compatibleList = concat $ parmap rdeepseq (flip (combinable comparison) bvToCheck) inBVListList
     in
@@ -567,7 +567,7 @@ getGraphCompatibleList comparison inBVListList bvToCheck =
 -- is the number of graphs it is compatible with
 getCompatibleList :: String -> [[BV.BV]] -> [[BV.BV]]
 getCompatibleList comparison inBVListList =
-  if null inBVListList then error "Null list of list og bitvectors in getCompatibleList"
+  if null inBVListList then error "Null list of list of bitvectors in getCompatibleList"
   else
     let uniqueBVList = nub $ concat inBVListList 
         bvCompatibleListList = parmap rdeepseq (getGraphCompatibleList comparison inBVListList) uniqueBVList
@@ -579,7 +579,7 @@ getCompatibleList comparison inBVListList =
 -- urRoot added to make sure there will be a single connected graph
 getThresholdNodes :: String -> Int -> Int -> [[G.LNode BV.BV]] -> ([G.LNode BV.BV], [Double])
 getThresholdNodes comparison thresholdInt numLeaves objectListList
-  | thresholdInt < 0 || thresholdInt > 100 = error "Threshold must be in range [0,100]"
+  | thresholdInt < 0 || thresholdInt > 100 = errorWithoutStackTrace"Threshold must be in range [0,100]"
   | null objectListList = error "Empty list of object lists in getThresholdObjects"
   | otherwise =
     let numGraphs = fromIntegral $ length objectListList
@@ -587,7 +587,7 @@ getThresholdNodes comparison thresholdInt numLeaves objectListList
         objectGroupList
           | comparison == "combinable" = getCompatibleList comparison (fmap (fmap snd) objectListList)
           | comparison == "identity" = Data.List.group $ sort (snd <$> concat objectListList)
-          | otherwise = error ("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
+          | otherwise = errorWithoutStackTrace("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
         uniqueList = zip indexList (fmap head objectGroupList)
         frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
         fullPairList = zip uniqueList frequencyList
@@ -602,7 +602,7 @@ getThresholdNodes comparison thresholdInt numLeaves objectListList
 -- used and number from numleaves so can use BV
 getThresholdEdges :: (Show a, Ord a) => Int -> Int -> [a] -> ([a], [Double])
 getThresholdEdges thresholdInt numGraphsIn objectList
-  | thresholdInt < 0 || thresholdInt > 100 = error "Threshold must be in range [0,100]"
+  | thresholdInt < 0 || thresholdInt > 100 = errorWithoutStackTrace"Threshold must be in range [0,100]"
   | null objectList = error "Empty list of object lists in getThresholdEdges"
   | otherwise =
   let threshold = (fromIntegral thresholdInt / 100.0) :: Double
@@ -677,7 +677,7 @@ sortInputArgs inContents inArgs (curFEN, curNewick, curDot, curNewFiles, curFENF
       sortInputArgs (tail inContents) (tail inArgs) (T.pack firstContents : curFEN, curNewick, curDot, curNewFiles, firstFileName : curFENFILES)
     else if (head firstContents == 's') || (head firstContents == 'g') || (head firstContents == 'd') then --Dot
       sortInputArgs (tail inContents) (tail inArgs) (curFEN, curNewick, firstFileName : curDot, curNewFiles, curFENFILES)
-    else error ("Input file " ++ firstFileName ++ " does not appear to be Newick, Enhanced Newick, Forest Enhanced Newick or dot format ")
+    else errorWithoutStackTrace("Input file " ++ firstFileName ++ " does not appear to be Newick, Enhanced Newick, Forest Enhanced Newick or dot format ")
 
 -- | nodeText2String takes a node with text label and returns a node with String label
 nodeText2String :: G.LNode T.Text -> G.LNode String
@@ -761,7 +761,7 @@ main =
     -- initial conversion to fgl Graph format
     let (inputGraphListDot :: [P.Gr Attributes Attributes]) = fmap dotToGraph  dotGraphList
 
-    if (length dotGraphList + length newickGraphList) < 2 then error ("Need 2 or more input graphs and " ++ show (length dotGraphList + length newickGraphList) ++ " have been input")
+    if (length dotGraphList + length newickGraphList) < 2 then errorWithoutStackTrace("Need 2 or more input graphs and " ++ show (length dotGraphList + length newickGraphList) ++ " have been input")
     else hPutStrLn stderr ("\nThere are " ++ show (length dotGraphList + length newickGraphList) ++ " input graphs")
     
     -- Get leaf sets for each graph (dot and newick separately due to types) and then their union
@@ -868,7 +868,7 @@ main =
     else if method == "adams" then do {hPutStrLn stderr adamsIIInfo; if outputFormat=="dot" then writeFile outDOT adamsIIOutDotString else writeFile outFEN adamsIIOutFENString}
     else if (method == "majority") || (method == "cun") || (method == "strict") then
         do {hPutStrLn stderr thresholdConInfo; if outputFormat=="dot" then writeFile outDOT thresholdConsensusOutDotString else writeFile outFEN thresholdConsensusOutFENString}
-    else error ("Graph combination method " ++ method ++ " is not implemented")
+    else errorWithoutStackTrace("Graph combination method " ++ method ++ " is not implemented")
 
     hPutStrLn stderr "\nDone"
 

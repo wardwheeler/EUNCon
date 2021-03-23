@@ -41,6 +41,7 @@ executable euncon
                 , vector
                 , bv
                 , array
+                , split
                 
                 
   default-extensions : BangPatterns                
@@ -48,9 +49,11 @@ executable euncon
   default-language: Haskell2010
 
   other-modules:  Adams
-                  PhyloParsers
+                  GraphFormatUtilities
+                  GeneralUtilities
+                  ParallelUtilities
                   ParseCommands
-  
+
 
 
  
