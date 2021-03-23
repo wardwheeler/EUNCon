@@ -703,7 +703,8 @@ modifyInDegGT1HTU origGraph nodeIndex htuNodes graphDelta@(nodesToAdd, edgesToAd
               newEdgeList = (totalNumberNodes, (fst firstLeaf), 0 :: Double) : (zip3 parentNodeList repeatedNodeNumber inEdgeLabels)
               -}
           in
-          modifyInDegGT1HTU origGraph (nodeIndex + numNewNodes) (tail htuNodes) (newNodeList ++ nodesToAdd, newEdgeList ++ edgesToAdd, firstHTU : nodesToDelete, inEdgeList ++ outEdgeList ++ edgesToDelete)
+          modifyInDegGT1HTU origGraph (nodeIndex + numNewNodes) (tail htuNodes) (newNodeList ++ nodesToAdd, newEdgeList ++ edgesToAdd, firstHTU : nodesToDelete, 
+            (inEdgeList ++ outEdgeList) ++ edgesToDelete)
 
 -- | modifyFGLForEnewick takes an FGl graphs and modified for enewick output
 -- 1) makes leaves that are indegree > 1 indegree 1 by creationg a new parent node with 
