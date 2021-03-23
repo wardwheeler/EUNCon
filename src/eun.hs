@@ -41,7 +41,6 @@ Portability :  portable (I hope)
 module Main where
 
 import qualified Adams                             as A
-import           Control.DeepSeq
 import           Control.Parallel.Strategies
 import qualified Data.Bits                         as B
 import qualified Data.BitVector                    as BV
@@ -62,21 +61,12 @@ import qualified Data.Set                          as S
 import qualified Data.Text.Lazy                    as T
 import qualified Data.Vector                       as V
 import qualified ParseCommands                     as PC
-import qualified PhyloParsers                      as PhyP
+import qualified GraphFormatUtilities              as PhyP
 import           System.Environment
 import           System.IO
+import           ParallelUtilities
 --import           Debug.Trace
 
-
--- NFData instance for parmap/rdeepseq
-instance NFData BV.BV where
-  rnf bv = BV.size bv `seq` BV.nat bv `seq` ()
-
--- |
--- Map a function over a traversable structure in parallel
--- Preferred over parMap which is limited to lists
-parmap :: Traversable t => Strategy b -> (a->b) -> t a -> t b
-parmap strat f = withStrategy (parTraversable strat).fmap f
 
 -- | turnOnOutZeroBit turns on the bit 'nleaves" signifying that
 -- the node is outdegree 1
