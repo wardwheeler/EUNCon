@@ -125,7 +125,8 @@ module GraphFormatUtilities (forestEnhancedNewickStringList2FGLList,
                              showGraph,
                              relabelFGL,
                              convertGraphToStrictText,
-                             splitVertexList
+                             splitVertexList,
+                             relabelFGLEdgesDouble
                             ) where
 
 import           Control.Parallel.Strategies
@@ -641,25 +642,81 @@ getDistToRoot fglGraph counter inNode  =
       in
       minimum parentPaths
 
+-- | modifyInDegGT1Leaves operates on the leaf nodes with indegree > 1 to prepare them for enewick representation
+-- leaves with indegree greater than one are modified such that:
+--   1) a new node is created as parent to the leaf and added to the "add" list
+--   2) edges incident on the leaf are put in the "delete" list 
+--   3) edges are created from teh new node to the leaf, and edges are "added" from teh leaf's parent to the new node
+modifyInDegGT1Leaves :: P.Gr T.Text Double -> Int -> [G.LNode T.Text] -> ([G.LNode T.Text],[G.LEdge Double],[G.LEdge Double]) -> ([G.LNode T.Text],[G.LEdge Double],[G.LEdge Double]) 
+modifyInDegGT1Leaves origGraph totalNumberNodes leafNodes graphDelta@(nodesToAdd, edgesToAdd, edgesToDelete) =
+  if G.isEmpty origGraph then error "Empty graph in modifyInDegGT1Leaves"
+  else if null leafNodes then graphDelta
+  else 
+      let firstLeaf = head leafNodes
+          firstInDegree = G.indeg origGraph (fst firstLeaf)
+      in
+      if firstInDegree == 1 then modifyInDegGT1Leaves origGraph totalNumberNodes (tail leafNodes) graphDelta
+      else -- in a "network leaf"
+          let inEdgeList = G.inn origGraph (fst firstLeaf)
+              parentNodeList = fmap fst3 inEdgeList
+              inEdgeLabels = fmap thd3 inEdgeList
+              newNode = (totalNumberNodes, T.pack $ "HTU" ++ show totalNumberNodes)
+              repeatedNodeNumber = replicate (length inEdgeList) totalNumberNodes
+              newEdgeList = (totalNumberNodes, (fst firstLeaf), 0 :: Double) : (zip3 parentNodeList repeatedNodeNumber inEdgeLabels)
+          in
+          modifyInDegGT1Leaves origGraph (totalNumberNodes + 1) (tail leafNodes) (newNode : nodesToAdd, newEdgeList, inEdgeList)
+
+-- | modifyInDegGT1HTU operates on the HTU nodes with indegree > 1 to prepare them for enewick representation
+-- HTUs with indegree greater than one are modified such that:
+--   1) the original HTU is maintained the first edge to that HTU is Maintained also
+--   2) other edges to that HTU are put in "delete" list
+--   3) a new HTU node is created for each deleted edge with same label as original HTU
+--   4) edges are created from the parents (except for the firt one) to the new nodes such thayt each one is indegree=1 and outdegree=0
+--   5) ne edges are put in teh "add list"
+modifyInDegGT1HTU :: P.Gr T.Text Double -> Int -> [G.LNode T.Text] -> ([G.LNode T.Text],[G.LEdge Double],[G.LNode T.Text],[G.LEdge Double]) -> ([G.LNode T.Text],[G.LEdge Double],[G.LNode T.Text],[G.LEdge Double]) 
+modifyInDegGT1HTU origGraph totalNumberNodes htuNodes graphDelta@(nodesToAdd, edgesToAdd, nodesToDelete, edgesToDelete) =
+  if G.isEmpty origGraph then error "Empty graph in modifyInDegGT1HTU"
+  else if null htuNodes then graphDelta
+  else 
+      let firstHTU = head htuNodes
+          firstInDegree = G.indeg origGraph (fst firstHTU)
+      in
+      if firstInDegree == 1 then modifyInDegGT1HTU origGraph totalNumberNodes (tail htuNodes) graphDelta
+      else -- in a "network leaf"
+          let inEdgeList = G.inn origGraph (fst firstHTU)
+              parentNodeList = fmap fst3 inEdgeList
+              inEdgeLabels = fmap thd3 inEdgeList
+
+              -- Create new nodes and edges
+              newNodeList = []
+              newEdgeList = edgesToAdd
+              {-
+              newNodeList = (totalNumberNodes, T.pack $ "HTU" ++ show totalNumberNodes)
+              repeatedNodeNumber = replicate (length inEdgeList) totalNumberNodes
+              newEdgeList = (totalNumberNodes, (fst firstLeaf), 0 :: Double) : (zip3 parentNodeList repeatedNodeNumber inEdgeLabels)
+              -}
+          in
+          modifyInDegGT1HTU origGraph (totalNumberNodes + 1) (tail htuNodes) (newNodeList ++ nodesToAdd, newEdgeList, nodesToDelete, inEdgeList)
+
 -- | modifyFGLForEnewick takes an FGl graphs and modified for enewick output
 -- 1) makes leaves that are indegree > 1 indegree 1 by creationg a new parent node with 
 --    the leafs parents as parents and teh leaf as single child
 -- 2) convertes each indegree > 1 node (non--leaf) to a series of indegree 1 nodes
 --    the first of which gets the first parent and all the children. Each subsequent
 --    parent gets a node with the name label and no children
-modifyFGLForEnewick :: P.Gr a b -> P.Gr a b
+modifyFGLForEnewick :: P.Gr T.Text Double -> P.Gr T.Text Double
 modifyFGLForEnewick inGraph =
-  if G. isEmpty inGraph then error "Empty graph to modify in modifyFGLForEnewick"
+  if G.isEmpty inGraph then error "Empty graph to modify in modifyFGLForEnewick"
   else
     let inNodes = G.labNodes inGraph
         inEdges = G.labEdges inGraph
         (rootNodes, leafNodes, nonLeafNodes) = splitVertexList inGraph
-        (nodesToAdd, edgesToAdd, nodesToDelete, edgesToDelete) = modifyInDeg2Leaves inGraph (length inNodes) leafNodes ([],[],[],[])
-        
-
+        (nodesToAdd, edgesToAdd, edgesToDelete) = modifyInDegGT1Leaves inGraph (length inNodes) leafNodes ([],[],[])
+        leafModGraph = G.insEdges edgesToAdd $ G.insNodes nodesToAdd $ G.delEdges (fmap G.toEdge edgesToDelete) inGraph
+        (nodesToAddHTU, edgesToAddHTU, nodesToDelete, edgesToDeleteHTU) = modifyInDegGT1HTU leafModGraph (G.order leafModGraph) nonLeafNodes ([],[],[],[])
     in
-    inGraph
-
+    G.insEdges edgesToAddHTU $ G.insNodes nodesToAddHTU $ G.delNodes (fmap fst nodesToDelete) $ G.delEdges (fmap G.toEdge edgesToDeleteHTU) leafModGraph
+        
 
 -- | fgl2FEN take a fgl graph and returns a Forest Enhanced Newick Text
 --   Can be simplified along lines of Cardona with change to graph before 
@@ -667,7 +724,7 @@ modifyFGLForEnewick inGraph =
 --   enewick requires (it seems) indegree 1 for leaves
 --   so need to creates nodes for indegree > 1 leaves
 -- these are not issues for dot files
-fgl2FEN :: (Show b) => Bool -> Bool -> P.Gr T.Text b -> T.Text
+fgl2FEN :: Bool -> Bool -> P.Gr T.Text Double -> T.Text
 fgl2FEN writeEdgeWeight writeNodeLable inFGLGraph =
   if G.isEmpty inFGLGraph then error "Empty graph to convert in fgl2FEN"
   else
@@ -710,7 +767,7 @@ fgl2FEN writeEdgeWeight writeNodeLable inFGLGraph =
 
 -- | fglList2ForestEnhancedNewickString takes FGL representation of forest and returns
 -- list of Forest Enhanced Newick as a single String
-fglList2ForestEnhancedNewickString :: (Show a) => [P.Gr T.Text a] -> Bool -> Bool -> String
+fglList2ForestEnhancedNewickString :: [P.Gr T.Text Double] -> Bool -> Bool -> String
 fglList2ForestEnhancedNewickString inFGLList writeEdgeWeight writeNodeLable =
   if null inFGLList then "\n"
   else
@@ -792,7 +849,7 @@ getNewick fglGraph writeEdgeWeight writeNodeLable inEdgeList
       
 
 -- |  stringGraph2TextGraph take P.Gr String a and converts to P.Gr Text a
-stringGraph2TextGraph :: P.Gr String b -> P.Gr T.Text b
+stringGraph2TextGraph :: P.Gr String Double -> P.Gr T.Text Double
 stringGraph2TextGraph inStringGraph =
     let (indices, labels) = unzip $ G.labNodes inStringGraph
         edges = G.labEdges inStringGraph
@@ -886,6 +943,14 @@ relabelFGL inGraph =
 relabeLEdge :: G.LEdge b -> G.LEdge Double
 relabeLEdge (u,v,_) = (u,v,0.0:: Double)
 
+--  | relabelFGL takes P.Gr Attributes Attributes and converts to P.Gr T.Text Double
+relabelFGLEdgesDouble :: P.Gr a b -> P.Gr a Double
+relabelFGLEdgesDouble inGraph =
+  if G.isEmpty inGraph then G.empty 
+  else  
+    let newEdgeList = fmap relabeLEdge (G.labEdges inGraph)
+    in
+    G.mkGraph (G.labNodes inGraph) newEdgeList
 
 -- | convertGraphToStrictText take a graphs with laze Text and makes it strict.
 convertGraphToStrictText :: P.Gr T.Text Double -> P.Gr StrictT.Text Double

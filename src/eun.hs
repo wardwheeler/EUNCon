@@ -805,11 +805,11 @@ main =
     --
     -- Create Adams II consensus
     --
-    let adamsII = A.makeAdamsII totallLeafSet fullLeafSetGraphs
+    let adamsII = A.makeAdamsII totallLeafSet (fmap PhyP.relabelFGLEdgesDouble fullLeafSetGraphs)
     let adamsIIInfo = "There are " ++ show (length $ G.nodes adamsII) ++ " nodes present in Adams II consensus"
     let adamsII' = changeVertexEdgeLabels vertexLabel False adamsII
     let adamsIIOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams adamsII'
-    let adamsIIOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph adamsII'] False False
+    let adamsIIOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph $ PhyP.relabelFGLEdgesDouble adamsII'] False False
 
     --
     -- Create thresholdMajority rule Consensus and dot string

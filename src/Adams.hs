@@ -123,7 +123,7 @@ mkGraphPair (nodeList, edgeList) = G.mkGraph nodeList edgeList
 
 -- | makeAdamsII takes a list of fgl graphs, convertes them to PhyloGraphVect
 -- makes the Adamns consensus and then converts back to fgl for return to EUN code
-makeAdamsII :: (Show a) => [G.LNode String] -> [P.Gr String a] ->  P.Gr String Double
+makeAdamsII :: [G.LNode String] -> [P.Gr String Double] ->  P.Gr String Double
 makeAdamsII leafNodeList inFGList
   | null leafNodeList = error "Null leaf node list in makeAdamsII"
   | null inFGList = G.empty
@@ -168,7 +168,7 @@ fgl2PGVNode inGraph ((index, inLabel), childList, parentList) =
 -- | fgl2PGV takes an fgl (functional graph) and convertes to PhyloGraphVect
 -- to use local (and old) Adams consensus functions
 -- retuns "Nothing" for edge labels ( no need for branch lengths)
-fgl2PGV :: (Show b) => P.Gr String b -> PhyloGraphVect
+fgl2PGV :: P.Gr String Double -> PhyloGraphVect
 fgl2PGV inGraph =
     if G.isEmpty inGraph then nullGraphVect
     else
