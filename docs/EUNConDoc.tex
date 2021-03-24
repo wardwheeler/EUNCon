@@ -58,19 +58,22 @@
 	Graphs may be input in the graphviz ``dot'' format \url{https://graphviz.org/}, Newick (as interpreted by Gary Olsen; \url{https://evolution.genetics.washington.edu/phylip/newick_doc.html}), Enhanced Newick \cite{Cardonaetal2008},
 	and Forest Enhanced Newick (defined by \citealp{WheelerPhyloSuperGraphs}) formats.
 	
-	Quickly, Forest Enhanced Newick (FEN) is a format based on Enhanced Newick (Enewick) for forests of components, each
-	of which is represented by an Enewick string.  The Enewick components are surrounded by `$<$' and '$>$'.
-	As in $<$(A, (B,C)); (D,(E,F));$>$.  Groups may be shared among Enewick components.
+	Quickly, Forest Enhanced Newick (FEN) is a format based on Enhanced Newick (ENewick) for forests of components, each
+	of which is represented by an ENewick string.  The ENewick components are surrounded by `$<$' and '$>$'.
+	As in $<$(A, (B,C)); (D,(E,F));$>$.  Groups may be shared among ENewick components.
 	
 	\section{Output Formats}
 	Graph outputs can be in either Graphviz `dot' or FEN formats.  Dot files can be visualized in a variety of ways 
 	using Graphviz (e.g. dot, neanto, twopi) into pdf, jpg and a large variety of other formats. FEN outputs of 
 	single trees (ie forest with a single component) are rendered as enewick.  Newick files can be visualized in a 
-	large number of programs (e.g. FigTree; \url{http://tree.bio.ed.ac.uk/software/figtree/})
+	large number of programs (e.g. FigTree; \url{http://tree.bio.ed.ac.uk/software/figtree/}, Dendroscope; 
+	\url{https://uni-tuebingen.de/fakultaeten/mathematisch-naturwissenschaftliche-fakultaet/fachbereiche/informatik/lehrstuehle/algorithms-in-bioinformatics/software/}). 	
+	When FEN/Enewick files are output, leaf vertices are modified if they have indegree $>$ 1, creating a new node as parent to that leaf
+	and redirecting the leaf's in-edges to that new node with a single edge connecting the new node to the leaf.  
 	\bigskip
 	\\Example dot command line: \\dot -Tpdf myDotFile.dot $>$ myDotFile.pdf\\
 	
-	For some reason on OSX the `pdf' option does not seem to work.  You can use `-Tps2' and that will generate a postscript file that preview can read and convert to pdf.
+	For some reason on OSX the `pdf' option does not seem to work.  You can use `-Tps2' and that will generate a postscript file ($>$ blah.ps) that Preview can read and convert to pdf.
 	
 	\section{Command options}
 	There are only a few program options that require specification.  There are defaults for all but input graphs.  
