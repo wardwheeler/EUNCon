@@ -100,7 +100,7 @@ getCommandErrorString noMatchList =
 -- checks commands for misspellings
 processCommands :: [String] -> (String, String, Int, Bool, Bool, Bool, String, String, [String])
 processCommands inList =
-    if null inList then error ("\n\nError--No input parameters.\nParameters that can be set:"
+    if null inList then errorWithoutStackTrace("\n\nError--No input parameters.\nParameters that can be set:"
         ++ "\n\tReconcile:eun|cun|strict|majority|Adams "
         ++ "\n\tCompare:combinable|identity "
         ++ "\n\tThreshold:0-100 (must be integer)"
@@ -109,9 +109,9 @@ processCommands inList =
         ++ "\n\tEdgeLabel:True|False"
         ++ "\n\tVertexLabel:True|False"
         ++ "\n\tOutFile:filename"
-        ++ "\n\tInput files (may include wildcards) without preceeding \"option=\""
+        ++ "\n\tInput files (may include wildcards) without preceeding \"option:\""
         ++ "\n\tRequires at least a single input graph file (and at least two input graphs)."
-        ++ "\n\tDefault values reconcile=EUN, compare=combinable threeshold=0, outformat=dot, outfile=euncon.out\n\n")
+        ++ "\n\tDefault values reconcile:EUN, compare:combinable threeshold:0, outformat:dot, outfile:euncon.out\n\n")
     else
         let inTextList = fmap T.pack inList
             inTextListLC = fmap T.toLower inTextList
@@ -135,7 +135,7 @@ processCommands inList =
         if null notMatchedList then
             trace ("\nInput arguments: " ++ show inList ++ "\nProgram options: " ++ show (method, compareMethod, threshold, connect, edgeLabel, vertexLabel, outFormat, outFile, inputFileList))
             (method, compareMethod, threshold, connect, edgeLabel, vertexLabel, outFormat, outFile, inputFileList)
-        else error ("\n\nError(s) in command specification (case insensitive):\n" ++ getCommandErrorString notMatchedList)
+        else errorWithoutStackTrace("\n\nError(s) in command specification (case insensitive):\n" ++ getCommandErrorString notMatchedList)
 
 
 -- | getInputFileNames returns names not including a parameter ':'
@@ -159,7 +159,7 @@ getMethod inTextList =
             else if option == "majority" then "majority"
             else if option == "strict" then "strict"
             else if option == "adams" then "adams"
-            else error ("Reconcile option \'" ++ option ++ "\' not recognized (eun|cun|majority|strict)")
+            else errorWithoutStackTrace("Reconcile option \'" ++ option ++ "\' not recognized (eun|cun|majority|strict)")
         else getMethod (tail inTextList)
 
 -- | getCompareMethod returns compareMethod value or default otherwise
@@ -176,7 +176,7 @@ getCompareMethod inTextList =
             in
             if option == "combinable" then "combinable"
             else if option == "identity" then "identity"
-            else error ("Compare option \'" ++ option ++ "\' not recognized (combinable|identity)")
+            else errorWithoutStackTrace("Compare option \'" ++ option ++ "\' not recognized (combinable|identity)")
         else getCompareMethod (tail inTextList)
 
 -- | getConect returns connect value or default otherwise (True|False)
@@ -193,7 +193,7 @@ getConnect inTextList =
             in
             if option == "true" then True
             else if option == "false" then False
-            else error ("Connect option \'" ++ option ++ "\' not recognized (True|False)")
+            else errorWithoutStackTrace("Connect option \'" ++ option ++ "\' not recognized (True|False)")
         else getConnect (tail inTextList)
 
 -- | getEdgeLabel returns edgeLabel value or default otherwise (True|False)
@@ -210,7 +210,7 @@ getEdgeLabel inTextList =
             in
             if option == "true" then True
             else if option == "false" then False
-            else error ("EdgeLAbel option \'" ++ option ++ "\' not recognized (True|False)")
+            else errorWithoutStackTrace("EdgeLAbel option \'" ++ option ++ "\' not recognized (True|False)")
         else getEdgeLabel (tail inTextList)
 
 -- | getVertexLabel returns edgeLabel value or default otherwise (True|False)
@@ -227,7 +227,7 @@ getVertexLabel inTextList =
             in
             if option == "true" then True
             else if option == "false" then False
-            else error ("VertexLabel option \'" ++ option ++ "\' not recognized (True|False)")
+            else errorWithoutStackTrace("VertexLabel option \'" ++ option ++ "\' not recognized (True|False)")
         else getVertexLabel (tail inTextList)
 
 
@@ -258,7 +258,7 @@ getOutputFormat inTextList =
             in
             if outFormat == "dot" then "dot"
             else if outFormat == "fenewick" then "fenewick"
-            else error ("Output format \'" ++ outFormat ++ "\' not recognized (dot|FENewick)")
+            else errorWithoutStackTrace("Output format \'" ++ outFormat ++ "\' not recognized (dot|FENewick)")
         else getOutputFormat (tail inTextList)
 
 -- | getOutputFileName returns output file name or default otherwise

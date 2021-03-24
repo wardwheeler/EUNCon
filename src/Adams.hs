@@ -49,7 +49,7 @@ import           Data.Maybe
 import qualified Data.Set                          as Set
 import qualified Data.Text.Lazy                    as T
 import qualified Data.Vector                       as V
-import qualified PhyloParsers                      as PhyP
+import qualified GraphFormatUtilities              as PhyP
 import           System.IO.Unsafe
 -- import           Debug.Trace
 
@@ -109,7 +109,7 @@ getAdamsIIPair inGraphVectA inGraphVectB =
             vertexLeafSetList = map (map getLeafSetFromNodeName . V.toList) curVertexSets
             potentialVertexSets = map (map getSecond . V.toList) curVertexSets
         in
-        if not sameLeafSet then error ("Leaf sets of input graphs do not match"  ++ show leafSets)
+        if not sameLeafSet then errorWithoutStackTrace("Leaf sets of input graphs do not match"  ++ show leafSets)
         else
           --return processed when have all nodes
             let allAdamsNodes = makeAdamsNodes [rootNode] "root" rootLUB leavesPlaced (zip potentialVertexSets vertexLeafSetList) --curVertexSets vertexLeafSetList
@@ -123,7 +123,7 @@ mkGraphPair (nodeList, edgeList) = G.mkGraph nodeList edgeList
 
 -- | makeAdamsII takes a list of fgl graphs, convertes them to PhyloGraphVect
 -- makes the Adamns consensus and then converts back to fgl for return to EUN code
-makeAdamsII :: (Show a) => [G.LNode String] -> [P.Gr String a] ->  P.Gr String Double
+makeAdamsII :: [G.LNode String] -> [P.Gr String Double] ->  P.Gr String Double
 makeAdamsII leafNodeList inFGList
   | null leafNodeList = error "Null leaf node list in makeAdamsII"
   | null inFGList = G.empty
@@ -136,8 +136,8 @@ makeAdamsII leafNodeList inFGList
         allTreesList = seqParMap myStrategy isTree inFGList'
         allTrees = foldl1' (&&) allTreesList
     in
-    if not allTrees then error ("Input graphs are not all trees in makeAdamsII: " ++ show allTreesList)
-    else if not (leafSetConstant [] inFGList) then error "Input leaf sets not constant in makeAdamsII"
+    if not allTrees then errorWithoutStackTrace("Input graphs are not all trees in makeAdamsII: " ++ show allTreesList)
+    else if not (leafSetConstant [] inFGList) then errorWithoutStackTrace"Input leaf sets not constant in makeAdamsII"
     else
       let inPGVList = fmap fgl2PGV inFGList' -- paralle problem with NFData seqParMap myStrategy fgl2PGV inFGList
           adamsPGV = foldl1' getAdamsIIPair inPGVList
@@ -168,7 +168,7 @@ fgl2PGVNode inGraph ((index, inLabel), childList, parentList) =
 -- | fgl2PGV takes an fgl (functional graph) and convertes to PhyloGraphVect
 -- to use local (and old) Adams consensus functions
 -- retuns "Nothing" for edge labels ( no need for branch lengths)
-fgl2PGV :: (Show b) => P.Gr String b -> PhyloGraphVect
+fgl2PGV :: P.Gr String Double -> PhyloGraphVect
 fgl2PGV inGraph =
     if G.isEmpty inGraph then nullGraphVect
     else
