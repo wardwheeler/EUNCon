@@ -140,7 +140,7 @@ import           Data.Maybe
 import qualified Data.Text.Lazy                         as T
 import qualified Data.Text                         as StrictT
 
--- import           Debug.Trace
+import           Debug.Trace
 import           GeneralUtilities
 import           ParallelUtilities
 import           Data.GraphViz                     as GV
@@ -808,7 +808,7 @@ component2Newick fglGraph writeEdgeWeight writeNodeLable (index, label) =
         middlePartList = concat $ fmap (getNewick fglGraph writeEdgeWeight writeNodeLable) (fmap (replicate 1) (G.out fglGraph index))
         label' = if writeNodeLable then label else T.empty -- trivial trees or write node name
     in
-    -- trace ("MPL (" ++ (show $ length middlePartList) ++ ") " ++ show middlePartList ++ " " ++ show (G.out fglGraph index)) (
+    --trace ("MPL (" ++ (show $ length middlePartList) ++ ") " ++ show middlePartList ++ " " ++ show (G.out fglGraph index)) (
     -- "naked" root
     if null middlePartList then T.concat [T.singleton '(', label, T.singleton ')', T.singleton ';']
     -- single output edge
@@ -817,6 +817,7 @@ component2Newick fglGraph writeEdgeWeight writeNodeLable (index, label) =
     else
       let middleText = T.intercalate (T.singleton ',') middlePartList
       in
+      --trace (show middlePartList ++ "\n" ++ T.unpack middleText)
       T.concat [T.singleton '(', middleText, T.singleton ')', label', T.singleton ';']
     --)
 
@@ -853,7 +854,7 @@ getNewick fglGraph writeEdgeWeight writeNodeLable inEdgeList
       in
       if length inEdgeList == 1 then newLabelList
       else [T.concat $ newLabelList ++ [T.singleton ','] ++ getNewick fglGraph writeEdgeWeight writeNodeLable (tail inEdgeList)]
-  -- not a leaf, recurse
+  -- is HTU recurse  
   else
     let nodeLabel = if not writeNodeLable then T.empty else makeLabel $ G.lab fglGraph curNodeIndex
         middlePartList = getNewick fglGraph writeEdgeWeight writeNodeLable (G.out fglGraph curNodeIndex)
@@ -861,13 +862,15 @@ getNewick fglGraph writeEdgeWeight writeNodeLable inEdgeList
     if length middlePartList == 1 then  -- outdegree 1
       let middleText = T.replace endStart newEndStart (head middlePartList)
       in
-      if not writeEdgeWeight then T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel]  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
-      else T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel]  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
+      if not writeEdgeWeight then T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ',']  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
+      else T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel, T.singleton ',']  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
     else -- multiple children, outdegree > 1
       let middleText = T.intercalate (T.singleton ',') middlePartList
       in
-      if not writeEdgeWeight then T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel]  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
-      else T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel] : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
+      if not writeEdgeWeight then 
+        (T.replace (T.pack ",)") (T.singleton ')') $ T.replace (T.pack ",,") (T.singleton ',') $  T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel])  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
+      else 
+         (T.replace (T.pack ",)") (T.singleton ')') $ T.replace (T.pack ",,") (T.singleton ',') $ T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel]) : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
       
 
 -- |  stringGraph2TextGraph take P.Gr String a and converts to P.Gr Text a
