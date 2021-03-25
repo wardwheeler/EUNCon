@@ -26,6 +26,7 @@ executable euncon
                 -fwrite-ide-info 
                     -optl-static -optl-pthread
                 -static
+                -- for native code generation remove the line below
                 -fllvm
 
 -- delete these for OSX
