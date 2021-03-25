@@ -60,11 +60,11 @@ import           Data.Monoid
 import qualified Data.Set                          as S
 import qualified Data.Text.Lazy                    as T
 import qualified Data.Vector                       as V
-import qualified ParseCommands                     as PC
 import qualified GraphFormatUtilities              as PhyP
+import           ParallelUtilities
+import qualified ParseCommands                     as PC
 import           System.Environment
 import           System.IO
-import           ParallelUtilities
 --import           Debug.Trace
 
 
@@ -466,21 +466,20 @@ addGraphLabels inGraph totallLeafSet
   -- trace ("Relabelled EUN : " ++ (showGraph $ G.mkGraph newNodes newEdges) ++ " from " ++ (show totallLeafSet))
   G.mkGraph newNodes newEdges
 
--- | intermediateNodeExists takes two node bitvetors and the full bitvector list 
--- and checks to see if there is an intermediate node  between first two that would 
--- remove need for the edge between the first two. 
+-- | intermediateNodeExists takes two node bitvetors and the full bitvector list
+-- and checks to see if there is an intermediate node  between first two that would
+-- remove need for the edge between the first two.
 -- This should reduce time complexity of vertex-based reconciliation to O(n^3) from O(n^4)
 intermediateNodeExists :: BV.BV -> BV.BV -> [BV.BV] -> Bool
-intermediateNodeExists aBV cBV fullNodeBVList = 
-  if null fullNodeBVList then False
-  else 
-    let bBV = head fullNodeBVList
-        leftIntersection = BV.and [aBV, bBV]
-        rightIntersection = BV.and [bBV, cBV]
-    in
-    if (bBV == aBV) || (bBV == cBV) then intermediateNodeExists aBV cBV (tail fullNodeBVList)
-    else if (leftIntersection == bBV) && (rightIntersection == cBV) then True
-    else intermediateNodeExists aBV cBV (tail fullNodeBVList)
+intermediateNodeExists aBV cBV fullNodeBVList =
+  not (null fullNodeBVList) &&
+  let bBV = head fullNodeBVList
+      leftIntersection = BV.and [aBV, bBV]
+      rightIntersection = BV.and [bBV, cBV]
+  in
+  if (bBV == aBV) || (bBV == cBV) then intermediateNodeExists aBV cBV (tail fullNodeBVList)
+  else if (leftIntersection == bBV) && (rightIntersection == cBV) then True
+  else intermediateNodeExists aBV cBV (tail fullNodeBVList)
 
 -- | getIntersectionEdges takes a node A and cretes directed edges to each other edge in [B]
 -- with rulkesLEdge
@@ -488,9 +487,9 @@ intermediateNodeExists aBV cBV fullNodeBVList =
 --  else if A intesect B = B then create edge A->B
 --  else if A intesect B = A then create edge B->A
 --  else --can't happen
--- Added in check for intermediate (by bitvector) node that shold obviate need for 
+-- Added in check for intermediate (by bitvector) node that shold obviate need for
 -- breadth first search for vertex-based reconciliation
---  if A > B and B > C and A intersect B = B and B intersect C = C 
+--  if A > B and B > C and A intersect B = B and B intersect C = C
 --    then edge  A->C is redundant and is not added to edge set
 getIntersectionEdges ::[BV.BV] -> [G.LNode BV.BV] -> G.LNode BV.BV -> [G.LEdge (BV.BV,BV.BV)]
 getIntersectionEdges fullNodeBVList bNodeList aNode =
@@ -502,8 +501,8 @@ getIntersectionEdges fullNodeBVList bNodeList aNode =
       in
       -- only do the directed 1/2 so no nub issues later
       if (bBV >= aBV) || (intersection == 0) then getIntersectionEdges fullNodeBVList (tail bNodeList) aNode
-      else if intersection == bBV then 
-        if (intermediateNodeExists aBV bBV fullNodeBVList) then getIntersectionEdges fullNodeBVList (tail bNodeList) aNode
+      else if intersection == bBV then
+        if intermediateNodeExists aBV bBV fullNodeBVList then getIntersectionEdges fullNodeBVList (tail bNodeList) aNode
         else (aIndex, bIndex, (aBV, bBV)) : getIntersectionEdges fullNodeBVList (tail bNodeList) aNode
       else  getIntersectionEdges fullNodeBVList (tail bNodeList) aNode
 
@@ -569,7 +568,7 @@ getCompatibleList :: String -> [[BV.BV]] -> [[BV.BV]]
 getCompatibleList comparison inBVListList =
   if null inBVListList then error "Null list of list of bitvectors in getCompatibleList"
   else
-    let uniqueBVList = nub $ concat inBVListList 
+    let uniqueBVList = nub $ concat inBVListList
         bvCompatibleListList = parmap rdeepseq (getGraphCompatibleList comparison inBVListList) uniqueBVList
     in
     bvCompatibleListList
@@ -591,7 +590,7 @@ getThresholdNodes comparison thresholdInt numLeaves objectListList
         uniqueList = zip indexList (fmap head objectGroupList)
         frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
         fullPairList = zip uniqueList frequencyList
-        threshold = (fromIntegral thresholdInt / 100.0) :: Double   
+        threshold = (fromIntegral thresholdInt / 100.0) :: Double
     in
     --trace ("There are " ++ (show $ length objectListList) ++ " to filter: " ++ (show uniqueList) ++ "\n" ++ (show objectGroupList) ++ " " ++ (show frequencyList))
     (fst <$> filter ((>= threshold). snd) fullPairList, snd <$> fullPairList)
@@ -697,17 +696,17 @@ fglTextB2Text inGraph =
     in
     G.mkGraph labNodes newEdges
 
--- | addUrRootAndEdges 
+-- | addUrRootAndEdges cretes a single root and adds edges to existing roots
 addUrRootAndEdges :: P.Gr String Double -> P.Gr String Double
-addUrRootAndEdges inGraph = 
+addUrRootAndEdges inGraph =
   let origLabVerts = G.labNodes inGraph
       origRootList = getRoots inGraph (fst <$> origLabVerts)
-  in 
-  if (length origRootList) == 1 then inGraph
-  else 
+  in
+  if length origRootList == 1 then inGraph
+  else
     let origLabEdges = G.labEdges inGraph
         numOrigVerts = length origLabVerts
-        newRoot = (numOrigVerts, ("HTU" ++ show numOrigVerts))
+        newRoot = (numOrigVerts, "HTU" ++ show numOrigVerts)
         newEdgeList = zip3 (replicate (length origRootList) numOrigVerts) origRootList (replicate (length origRootList) 0.0)
     in
     G.mkGraph (origLabVerts ++ [newRoot]) (origLabEdges ++ newEdgeList)
@@ -718,8 +717,8 @@ changeVertexEdgeLabels keepVertexLabel keepEdgeLabel inGraph =
   let inLabNodes = G.labNodes inGraph
       degOutList = G.outdeg inGraph <$> G.nodes inGraph
       nodeOutList = zip  degOutList inLabNodes
-      leafNodeList = fmap snd $ filter ((==0).fst) nodeOutList
-      nonLeafNodeList = fmap snd $ filter ((>0).fst) nodeOutList
+      leafNodeList = snd <$> filter ((==0).fst) nodeOutList
+      nonLeafNodeList = snd <$> filter ((>0).fst) nodeOutList
       newNonLeafNodes = if keepVertexLabel then nonLeafNodeList
                         else zip (fmap fst nonLeafNodeList) (replicate (length nonLeafNodeList) "")
       inLabEdges = G.labEdges inGraph
@@ -738,7 +737,7 @@ main =
     let splash2 = "EUNCon comes with ABSOLUTELY NO WARRANTY; This is free software, and may be \nredistributed "
     let splash3 = "under the GNU General Public License Version 2, June 1991.\n"
     hPutStrLn stderr (splash ++ splash2 ++ splash3)
-    
+
     -- Process arguments
     args <- getArgs
     let !(method, compareMethod, threshold, connectComponents, edgeLabel, vertexLabel, outputFormat, outputFile, inputFileList) = PC.processCommands args
@@ -763,7 +762,7 @@ main =
 
     if (length dotGraphList + length newickGraphList) < 2 then errorWithoutStackTrace("Need 2 or more input graphs and " ++ show (length dotGraphList + length newickGraphList) ++ " have been input")
     else hPutStrLn stderr ("\nThere are " ++ show (length dotGraphList + length newickGraphList) ++ " input graphs")
-    
+
     -- Get leaf sets for each graph (dot and newick separately due to types) and then their union
     -- this to allow for missing data (leaves) in input graphs
     -- and leaves not in same order
@@ -815,21 +814,21 @@ main =
     -- Create thresholdMajority rule Consensus and dot string
     -- vertex-based CUN-> Majority rule ->Strict
     --
-    let (thresholdNodes', nodeFreqs) = getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs) 
+    let (thresholdNodes', nodeFreqs) = getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs)
     let thresholdNodes = leafNodes ++ thresholdNodes'
     let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges (fmap snd thresholdNodes) thresholdNodes) thresholdNodes
-    let numPossibleEdges =  (((length thresholdNodes) * (length thresholdNodes)) - (length thresholdNodes)) `div` 2
-    let thresholdConsensusGraph = G.mkGraph thresholdNodes thresholdEdges -- O(n^3) 
+    let numPossibleEdges =  ((length thresholdNodes * length thresholdNodes) - length thresholdNodes) `div` 2
+    let thresholdConsensusGraph = G.mkGraph thresholdNodes thresholdEdges -- O(n^3)
     -- let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges) -- O(n^4)
-    let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in >= " ++ (show threshold ++ "%") ++ " of input graphs and " ++ (show numPossibleEdges) ++ " candidate edges"
-                          ++ " yielding a final graph with " ++ (show $ length (G.labNodes thresholdConsensusGraph)) ++ " nodes and " ++ (show $ length (G.labEdges thresholdConsensusGraph)) ++ " edges"
-    
+    let thresholdConInfo =  "There are " ++ show (length thresholdNodes) ++ " nodes present in >= " ++ (show threshold ++ "%") ++ " of input graphs and " ++ show numPossibleEdges ++ " candidate edges"
+                          ++ " yielding a final graph with " ++ show (length (G.labNodes thresholdConsensusGraph)) ++ " nodes and " ++ show (length (G.labEdges thresholdConsensusGraph)) ++ " edges"
+
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
     let labelledTresholdConsensusGraph' = addGraphLabels thresholdConsensusGraph totallLeafSet
-    let labelledTresholdConsensusGraph'' = addEdgeFrequenciesToGraph labelledTresholdConsensusGraph' (length leafNodes) nodeFreqs 
-    
+    let labelledTresholdConsensusGraph'' = addEdgeFrequenciesToGraph labelledTresholdConsensusGraph' (length leafNodes) nodeFreqs
+
     -- Add urRoot and edges to existing roots if there are unconnected components and connnectComponets is True
-    let labelledTresholdConsensusGraph = if not connectComponents then labelledTresholdConsensusGraph'' 
+    let labelledTresholdConsensusGraph = if not connectComponents then labelledTresholdConsensusGraph''
                                          else addUrRootAndEdges labelledTresholdConsensusGraph''
     let gvRelabelledConsensusGraph = changeVertexEdgeLabels vertexLabel edgeLabel labelledTresholdConsensusGraph
     let thresholdConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams gvRelabelledConsensusGraph
@@ -845,10 +844,10 @@ main =
     -- Remove unnconnected HTU nodes via postorder pass from leaves
     let thresholdEUNGraph = verticesByPostorder thresholdEUNGraph' leafNodes S.empty
     let thresholdEUNInfo =  "\nThreshold EUN deleted " ++ show (length unionEdges - length (G.labEdges thresholdEUNGraph) ) ++ " of " ++ show (length unionEdges) ++ " total edges"
-                            ++ " for a final graph with " ++ (show $ length (G.labNodes thresholdEUNGraph)) ++ " nodes and " ++ (show $ length (G.labEdges thresholdEUNGraph)) ++ " edges"
+                            ++ " for a final graph with " ++ show (length (G.labNodes thresholdEUNGraph)) ++ " nodes and " ++ show (length (G.labEdges thresholdEUNGraph)) ++ " edges"
     -- add back labels for vertices and "GV.quickParams" for G.Gr String Double or whatever
     let thresholdLabelledEUNGraph' = addGraphLabels thresholdEUNGraph totallLeafSet
-    let thresholdLabelledEUNGraph'' = addEdgeFrequenciesToGraph thresholdLabelledEUNGraph' (length leafNodes) edgeFreqs 
+    let thresholdLabelledEUNGraph'' = addEdgeFrequenciesToGraph thresholdLabelledEUNGraph' (length leafNodes) edgeFreqs
 
     -- Add urRoot and edges to existing roots if there are unconnected components and connnectComponets is True
     let thresholdLabelledEUNGraph = if not connectComponents then thresholdLabelledEUNGraph''

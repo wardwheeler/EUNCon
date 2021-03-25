@@ -41,9 +41,9 @@ Todo:
 
 module ParseCommands (processCommands) where
 
-import qualified Data.Text.Lazy         as T
-import           Debug.Trace
 import           Data.Array
+import qualified Data.Text.Lazy as T
+import           Debug.Trace
 
 -- | function for first element of triple
 fst3 :: (a,b,c) -> a
@@ -126,8 +126,8 @@ processCommands inList =
             connect = getConnect inTextListLC
             edgeLabel = getEdgeLabel inTextListLC
             vertexLabel = getVertexLabel inTextListLC
-            threshold = if method == "cun" then 0 
-                        else if method == "strict" then 100 
+            threshold = if method == "cun" then 0
+                        else if method == "strict" then 100
                         else getThreshold inTextListLC
             outFormat = getOutputFormat inTextListLC
             outFile =  getOutputFileName (zip inTextListLC inTextList)

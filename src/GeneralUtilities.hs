@@ -37,12 +37,12 @@ Portability :  portable (I hope)
 module GeneralUtilities where
 
 import           Data.Array
-import           Data.Maybe
 import           Data.List
 import           Data.List.Split
-import qualified Data.Text        as T
+import           Data.Maybe
+import qualified Data.Text       as T
 
-import           Debug.Trace 
+import           Debug.Trace
 
 -- | functions for triples, quadruples
 fst3 :: (a,b,c) -> a
@@ -118,13 +118,13 @@ isSequentialSubsequence :: String -> String -> Bool
 isSequentialSubsequence firstL secondL =
   if null firstL then False
   else if length firstL > length secondL then False
-  else 
+  else
     let foundNumber = T.count  (T.pack firstL) (T.pack secondL)
     in
     if foundNumber == 0 then False
     else True
 
-  
+
 
 
 

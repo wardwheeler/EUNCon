@@ -384,7 +384,7 @@ getSplitList curLUB placedTaxa (potentialVerts, vertLeafSet) =
         newLUBs
 
 -- | replaceChar take set of charcters to be replaced by a char in a String
-replaceChar :: [Char] -> Char -> Char -> Char
+replaceChar :: String -> Char -> Char -> Char
 replaceChar inSet2Replace replaceChar2 inChar =
     if inChar `elem` inSet2Replace then replaceChar2
     else inChar
