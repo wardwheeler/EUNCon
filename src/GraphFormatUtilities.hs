@@ -189,7 +189,7 @@ divideGraphText inText =
                 restPart = T.tail $ T.dropWhile (/= ';') inText
             in
             firstPart : divideGraphText restPart
-        else error ("First character in graph representation " ++ (T.unpack inText) ++ " : " ++ (show firstChar) ++ " is not either '<' or '('")
+        else error ("First character in graph representation " ++ T.unpack inText ++ " : " ++ show firstChar ++ " is not either '<' or '('")
 
 -- | removeNewickComments take text and removes all "[...]"
 removeNewickComments :: T.Text -> T.Text
@@ -565,7 +565,7 @@ mergeNetNodesAndEdges inGraph =
     in
 
     -- nothing to do (no repeated node labels)
-    if graphDelta == Nothing then 
+    if isNothing graphDelta then
       -- need to reindex nodes and edges so nodes are sequential
       let (_, nodeIndexPairs) = getNodeIndexPair [] [] nodeList
           nodeMap = Map.fromList nodeIndexPairs
@@ -575,49 +575,49 @@ mergeNetNodesAndEdges inGraph =
       G.mkGraph reindexedNodeList reIndexedEdgeList
 
     -- modifications were made to graph
-    else 
+    else
         let (nodesToDelete, edgesToDelete, edgesToCreate) = fromJust graphDelta
             newGraph = G.insEdges edgesToCreate $ G.delNodes (fmap fst nodesToDelete) $ G.delEdges (fmap G.toEdge edgesToDelete) inGraph
         in
-        trace (showGraph newGraph) 
-        mergeNetNodesAndEdges newGraph 
+        trace (showGraph newGraph)
+        mergeNetNodesAndEdges newGraph
     )
 
 -- | getMergeNodeEdgeDelta takes a graph and list of labelled nodes
 -- merges the nodes with identical labels, dfeltes all but the first
 -- and creates new edges to and from first node, deleting the others
 -- works recursively to update graph to keep node and edge indices in synch
+-- this is n^2 in number of network nodes--prob could be made linear
 getMergeNodeEdgeDelta :: P.Gr T.Text Double -> [G.LNode T.Text] -> Maybe ([G.LNode T.Text], [G.LEdge Double], [G.LEdge Double])
-getMergeNodeEdgeDelta inGraph inNodeList =
-  if G.isEmpty inGraph then error "Empty graph in getMergeNodeEdgeDelta"
-    -- all nodes are done
-  else if null inNodeList then Nothing
-  else -- Nodes to examine
-    let curNode = head inNodeList
-        nodeList = filter ((== (snd curNode)). snd) inNodeList
-    in
-    -- node label not repeated
-    if length nodeList == 1 then getMergeNodeEdgeDelta inGraph (tail inNodeList)
-    else -- node label repeated
-        let nodesToDelete = tail nodeList
-            inEdgesToDelete = concat $ fmap (G.inn inGraph) (fmap fst nodesToDelete)
-            outEdgesToDelete = concat $ fmap (G.out inGraph) (fmap fst nodesToDelete)
-            
-            -- Make new in-edges
-            newInEdgeUs = fmap fst3 inEdgesToDelete
-            newInEdgeLabels =  fmap thd3 inEdgesToDelete
-            newInEdgeVs = replicate (length inEdgesToDelete) (fst curNode)
-            inEdgesToAdd = zip3 newInEdgeUs newInEdgeVs newInEdgeLabels
-
-            -- make new out-edges
-            newOutEdgeUs = replicate (length outEdgesToDelete) (fst curNode) 
-            newOutEdgeLabels =  fmap thd3 outEdgesToDelete
-            newOutEdgeVs = fmap snd3 outEdgesToDelete
-            outEdgesToAdd = zip3 newOutEdgeUs newOutEdgeVs newOutEdgeLabels
-
+getMergeNodeEdgeDelta inGraph inNodeList
+  | G.isEmpty inGraph = error "Empty graph in getMergeNodeEdgeDelta"
+  | null inNodeList = Nothing
+  | otherwise = -- Nodes to examine
+        let curNode = head inNodeList
+            nodeList = filter ((== snd curNode). snd) inNodeList
         in
-        Just (nodesToDelete, inEdgesToDelete ++ outEdgesToDelete, inEdgesToAdd ++ outEdgesToAdd)
-        
+        -- node label not repeated
+        if length nodeList == 1 then getMergeNodeEdgeDelta inGraph (tail inNodeList)
+        else -- node label repeated
+            let nodesToDelete = tail nodeList
+                inEdgesToDelete = concatMap (G.inn inGraph) (fmap fst nodesToDelete)
+                outEdgesToDelete = concatMap (G.out inGraph) (fmap fst nodesToDelete)
+
+                -- Make new in-edges
+                newInEdgeUs = fmap fst3 inEdgesToDelete
+                newInEdgeLabels =  fmap thd3 inEdgesToDelete
+                newInEdgeVs = replicate (length inEdgesToDelete) (fst curNode)
+                inEdgesToAdd = zip3 newInEdgeUs newInEdgeVs newInEdgeLabels
+
+                -- make new out-edges
+                newOutEdgeUs = replicate (length outEdgesToDelete) (fst curNode)
+                newOutEdgeLabels =  fmap thd3 outEdgesToDelete
+                newOutEdgeVs = fmap snd3 outEdgesToDelete
+                outEdgesToAdd = zip3 newOutEdgeUs newOutEdgeVs newOutEdgeLabels
+
+            in
+            Just (nodesToDelete, inEdgesToDelete ++ outEdgesToDelete, inEdgesToAdd ++ outEdgesToAdd)
+
 
 
 -- | subTreeSize takes a nodeList and retuns the number of leaves that can be
@@ -703,10 +703,10 @@ getDistToRoot fglGraph counter inNode  =
 --   2) edges incident on the leaf are put in the "delete" list
 --   3) edges are created from teh new node to the leaf, and edges are "added" from teh leaf's parent to the new node
 modifyInDegGT1Leaves :: P.Gr T.Text Double -> Int -> [G.LNode T.Text] -> ([G.LNode T.Text],[G.LEdge Double],[G.LEdge Double]) -> ([G.LNode T.Text],[G.LEdge Double],[G.LEdge Double])
-modifyInDegGT1Leaves origGraph totalNumberNodes leafNodes graphDelta@(nodesToAdd, edgesToAdd, edgesToDelete) =
-  if G.isEmpty origGraph then error "Empty graph in modifyInDegGT1Leaves"
-  else if null leafNodes then graphDelta
-  else
+modifyInDegGT1Leaves origGraph totalNumberNodes leafNodes graphDelta@(nodesToAdd, edgesToAdd, edgesToDelete)
+  | G.isEmpty origGraph = error "Empty graph in modifyInDegGT1Leaves"
+  | null leafNodes = graphDelta
+  | otherwise =
       let firstLeaf = head leafNodes
           firstInDegree = G.indeg origGraph (fst firstLeaf)
       in
@@ -717,7 +717,7 @@ modifyInDegGT1Leaves origGraph totalNumberNodes leafNodes graphDelta@(nodesToAdd
               inEdgeLabels = fmap thd3 inEdgeList
               newNode = (totalNumberNodes, T.pack $ "HTU" ++ show totalNumberNodes)
               repeatedNodeNumber = replicate (length inEdgeList) totalNumberNodes
-              newEdgeList = (totalNumberNodes, (fst firstLeaf), 0 :: Double) : (zip3 parentNodeList repeatedNodeNumber inEdgeLabels)
+              newEdgeList = (totalNumberNodes, fst firstLeaf, 0 :: Double) : zip3 parentNodeList repeatedNodeNumber inEdgeLabels
           in
           modifyInDegGT1Leaves origGraph (totalNumberNodes + 1) (tail leafNodes) (newNode : nodesToAdd, newEdgeList ++ edgesToAdd, inEdgeList ++ edgesToDelete)
 
@@ -729,11 +729,11 @@ modifyInDegGT1Leaves origGraph totalNumberNodes leafNodes graphDelta@(nodesToAdd
 --   4) edges are created from the parents (except for the firt one) to the new nodes such thayt each one is indegree=1 and outdegree=0
 --   5) ne edges are put in teh "add list"
 -- Graphs are remade at eash recursivfe step tpo keep node/edge indexing correct
-modifyInDegGT1HTU :: P.Gr T.Text Double -> Int -> [G.LNode T.Text] -> P.Gr T.Text Double 
-modifyInDegGT1HTU origGraph nodeIndex htuNodes =
-  if G.isEmpty origGraph then error "Empty graph in modifyInDegGT1HTU"
-  else if null htuNodes then origGraph
-  else
+modifyInDegGT1HTU :: P.Gr T.Text Double -> Int -> [G.LNode T.Text] -> P.Gr T.Text Double
+modifyInDegGT1HTU origGraph nodeIndex htuNodes
+  | G.isEmpty origGraph = error "Empty graph in modifyInDegGT1HTU"
+  | null htuNodes = origGraph
+  | otherwise =
       let firstHTU = head htuNodes
           firstInDegree = G.indeg origGraph (fst firstHTU)
       in
@@ -754,15 +754,15 @@ modifyInDegGT1HTU origGraph nodeIndex htuNodes =
               newNodeList = zip nodeIndexList nodeLabelList
 
               -- Edges to new nodes and edges from first new node ot children
-              newEdgeList = (zip3 parentNodeList nodeIndexList (fmap thd3 inEdgeList)) ++ (zip3 nodeForChildenList childNodeList inEdgeLabels)              
-              
+              newEdgeList = zip3 parentNodeList nodeIndexList (fmap thd3 inEdgeList) ++ zip3 nodeForChildenList childNodeList inEdgeLabels
+
               newGraph = G.insEdges newEdgeList $ G.insNodes newNodeList $ G.delNode (fst firstHTU) $ G.delEdges (fmap G.toEdge (inEdgeList ++ outEdgeList)) origGraph
           in
           --trace (show inEdgeList ++ "\n" ++ show outEdgeList ++ "\n" ++ show (newNodeList ++ nodesToAdd, newEdgeList ++ edgesToAdd, firstHTU : nodesToDelete,
            -- (inEdgeList ++ outEdgeList) ++ edgesToDelete))
 
           modifyInDegGT1HTU newGraph (nodeIndex + numNewNodes) (tail htuNodes)
-          --)
+                --)
 
 -- | modifyFGLForEnewick takes an FGl graphs and modified for enewick output
 -- 1) makes leaves that are indegree > 1 indegree 1 by creationg a new parent node with
@@ -836,17 +836,18 @@ component2Newick fglGraph writeEdgeWeight writeNodeLable (index, label) =
   else
     -- start with root (no in edge weight) issue at root not seeing multiple components properly
     let -- preorder traversal
-        middlePartList = concat $ fmap (getNewick fglGraph writeEdgeWeight writeNodeLable) (fmap (replicate 1) (G.out fglGraph index))
+        middlePartList = concatMap (getNewick fglGraph writeEdgeWeight writeNodeLable) (fmap (replicate 1) (G.out fglGraph index))
         label' = if writeNodeLable then label else T.empty -- trivial trees or write node name
     in
     --trace ("MPL (" ++ (show $ length middlePartList) ++ ") " ++ show middlePartList ++ " " ++ show (G.out fglGraph index)) (
     -- "naked" root
-    let firstText = if null middlePartList then T.concat [T.singleton '(', label, T.singleton ')', T.singleton ';']
-                    else if length middlePartList == 1 then
-                      T.concat [T.singleton '(', head middlePartList, T.singleton ')', label', T.singleton ';']
-                    else T.concat [T.singleton '(', T.intercalate (T.singleton ',') middlePartList, T.singleton ')', label', T.singleton ';']
-    in T.replace (T.pack ",)") (T.singleton ')') $ T.replace (T.pack ",,") (T.singleton ',') $ firstText
-    
+    let firstText
+          | null middlePartList = T.concat [T.singleton '(', label, T.singleton ')', T.singleton ';']
+          | length middlePartList == 1 =
+               T.concat [T.singleton '(', head middlePartList, T.singleton ')', label', T.singleton ';']
+                    | otherwise = T.concat [T.singleton '(', T.intercalate (T.singleton ',') middlePartList, T.singleton ')', label', T.singleton ';']
+    in T.replace (T.pack ",)") (T.singleton ')') $ T.replace (T.pack ",,") (T.singleton ',') firstText
+
 
 
 -- | makeLabel takes Maybe T.Text and retuns T.empty if Nothing, Text otherwise
@@ -875,7 +876,7 @@ getNewick fglGraph writeEdgeWeight writeNodeLable inEdgeList
   if null outEdges then
     let leafLabel = G.lab fglGraph curNodeIndex
     in
-    if isNothing leafLabel then error ("Leaf without label in getNewick: node " ++ show  curNodeIndex ++ " edge: " ++ (show $ head inEdgeList))
+    if isNothing leafLabel then error ("Leaf without label in getNewick: node " ++ show  curNodeIndex ++ " edge: " ++ show (head inEdgeList))
     else
       let newLabelList = if writeEdgeWeight then [T.concat [fromJust leafLabel, T.singleton ':', T.pack $ show edgeLabel]] else [fromJust leafLabel]
       in
@@ -895,9 +896,9 @@ getNewick fglGraph writeEdgeWeight writeNodeLable inEdgeList
       let middleText = T.intercalate (T.singleton ',') middlePartList
       in
       if not writeEdgeWeight then
-        (T.replace (T.pack ",)") (T.singleton ')') $ T.replace (T.pack ",,") (T.singleton ',') $  T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel])  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
+        T.replace (T.pack ",)") (T.singleton ')') (T.replace (T.pack ",,") (T.singleton ',') $  T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel])  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
       else
-         (T.replace (T.pack ",)") (T.singleton ')') $ T.replace (T.pack ",,") (T.singleton ',') $ T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel]) : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
+         T.replace (T.pack ",)") (T.singleton ')') (T.replace (T.pack ",,") (T.singleton ',') $ T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel]) : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
 
 
 -- |  stringGraph2TextGraph take P.Gr String a and converts to P.Gr Text a
@@ -1010,7 +1011,7 @@ convertGraphToStrictText inGraph =
   if G.isEmpty inGraph then G.empty
   else
     let nodeList = G.labNodes inGraph
-        nodesStrictText = fmap T.toStrict $ fmap snd nodeList
+        nodesStrictText = fmap (T.toStrict . snd) nodeList
         nodeIndices = fmap fst nodeList
     in
     G.mkGraph (zip nodeIndices nodesStrictText) (G.labEdges inGraph)
