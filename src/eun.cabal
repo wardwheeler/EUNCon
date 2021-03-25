@@ -24,8 +24,9 @@ executable euncon
                 -O2
                 -- for weeder
                 -fwrite-ide-info 
-		            -optl-static -optl-pthread
+                    -optl-static -optl-pthread
                 -static
+                -fllvm
 
 -- delete these for OSX
   cc-options: -static
