@@ -37,7 +37,7 @@ Portability :  portable (I hope)
 module GeneralUtilities where
 
 import           Data.Array
-import qualified Data.Text       as T
+import qualified Data.Text  as T
 
 
 -- | functions for triples, quadruples

@@ -141,7 +141,7 @@ import           Debug.Trace
 {--
     Using Text as ouput for non-standard ascii characters (accents, umlautes etc)
 --}
-  
+
 -- |
 -- Map a function over a traversable structure in parallel
 -- Preferred over parMap which is limited to lists
@@ -709,7 +709,7 @@ component2Newick fglGraph writeEdgeWeight writeNodeLable (index, label) =
     -- "naked" root
     if null middlePartList then T.concat [T.singleton '(', label, T.singleton ')', T.singleton ';']
     -- single output edge
-    else if length middlePartList == 1 then 
+    else if length middlePartList == 1 then
       T.concat [T.singleton '(', head middlePartList, T.singleton ')', label', T.singleton ';']
     else
       let middleText = T.intercalate (T.singleton ',') middlePartList
@@ -765,7 +765,7 @@ getNewick fglGraph writeEdgeWeight writeNodeLable inEdgeList
       in
       if not writeEdgeWeight then T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel]  : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
       else T.concat [T.singleton '(', middleText, T.singleton ')', nodeLabel, T.singleton ':', T.pack $ show edgeLabel] : getNewick fglGraph writeEdgeWeight writeNodeLable  (tail inEdgeList)
-      
+
 
 -- |  stringGraph2TextGraph take P.Gr String a and converts to P.Gr Text a
 stringGraph2TextGraph :: P.Gr String b -> P.Gr T.Text b
