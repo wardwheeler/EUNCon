@@ -478,8 +478,7 @@ intermediateNodeExists aBV cBV fullNodeBVList =
       rightIntersection = BV.and [bBV, cBV]
   in
   if (bBV == aBV) || (bBV == cBV) then intermediateNodeExists aBV cBV (tail fullNodeBVList)
-  else if (leftIntersection == bBV) && (rightIntersection == cBV) then True
-  else intermediateNodeExists aBV cBV (tail fullNodeBVList)
+  else ((leftIntersection == bBV) && (rightIntersection == cBV)) || intermediateNodeExists aBV cBV (tail fullNodeBVList)
 
 -- | getIntersectionEdges takes a node A and cretes directed edges to each other edge in [B]
 -- with rulkesLEdge
@@ -724,7 +723,7 @@ changeVertexEdgeLabels keepVertexLabel keepEdgeLabel inGraph =
       inLabEdges = G.labEdges inGraph
       inEdges = fmap G.toEdge inLabEdges
       newEdges = if keepEdgeLabel then fmap showLabel inLabEdges
-                 else fmap (flip G.toLEdge "") inEdges
+                 else fmap (`G.toLEdge` "") inEdges
   in
   G.mkGraph (leafNodeList ++ newNonLeafNodes) newEdges
     where showLabel (e,u,l) = (e,u,show l)
