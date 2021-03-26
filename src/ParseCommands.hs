@@ -126,9 +126,10 @@ processCommands inList =
             connect = getConnect inTextListLC
             edgeLabel = getEdgeLabel inTextListLC
             vertexLabel = getVertexLabel inTextListLC
-            threshold = if method == "cun" then 0
-                        else if method == "strict" then 100
-                        else getThreshold inTextListLC
+            threshold
+              | method == "cun" = 0
+              | method == "strict" = 100
+              | otherwise = getThreshold inTextListLC
             outFormat = getOutputFormat inTextListLC
             outFile =  getOutputFileName (zip inTextListLC inTextList)
         in
@@ -191,9 +192,7 @@ getConnect inTextList =
         if firstCommand == T.pack "connect" then
             let option = T.unpack firstOption
             in
-            if option == "true" then True
-            else if option == "false" then False
-            else errorWithoutStackTrace("Connect option \'" ++ option ++ "\' not recognized (True|False)")
+            (option == "true") || (option /= "false" && errorWithoutStackTrace("Connect option \'" ++ option ++ "\' not recognized (True|False)"))
         else getConnect (tail inTextList)
 
 -- | getEdgeLabel returns edgeLabel value or default otherwise (True|False)
@@ -208,9 +207,7 @@ getEdgeLabel inTextList =
         if firstCommand == T.pack "edgelabel" then
             let option = T.unpack firstOption
             in
-            if option == "true" then True
-            else if option == "false" then False
-            else errorWithoutStackTrace("EdgeLAbel option \'" ++ option ++ "\' not recognized (True|False)")
+            (option == "true") || (option /= "false" && errorWithoutStackTrace("EdgeLAbel option \'" ++ option ++ "\' not recognized (True|False)"))
         else getEdgeLabel (tail inTextList)
 
 -- | getVertexLabel returns edgeLabel value or default otherwise (True|False)
@@ -225,9 +222,7 @@ getVertexLabel inTextList =
         if firstCommand == T.pack "vertexlabel" then
             let option = T.unpack firstOption
             in
-            if option == "true" then True
-            else if option == "false" then False
-            else errorWithoutStackTrace("VertexLabel option \'" ++ option ++ "\' not recognized (True|False)")
+            (option == "true") || (option /= "false" && errorWithoutStackTrace("VertexLabel option \'" ++ option ++ "\' not recognized (True|False)"))
         else getVertexLabel (tail inTextList)
 
 

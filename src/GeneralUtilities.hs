@@ -37,12 +37,8 @@ Portability :  portable (I hope)
 module GeneralUtilities where
 
 import           Data.Array
-import           Data.List
-import           Data.List.Split
-import           Data.Maybe
 import qualified Data.Text       as T
 
-import           Debug.Trace
 
 -- | functions for triples, quadruples
 fst3 :: (a,b,c) -> a
@@ -115,14 +111,13 @@ getCommandErrorString noMatchList =
 -- Uses Text.filter to see if there is a match
 --isSequentialSubsequence :: (Eq a) => [a] -> [a] -> Bool
 isSequentialSubsequence :: String -> String -> Bool
-isSequentialSubsequence firstL secondL =
-  if null firstL then False
-  else if length firstL > length secondL then False
-  else
+isSequentialSubsequence firstL secondL
+  | null firstL = False
+  | length firstL > length secondL = False
+  | otherwise =
     let foundNumber = T.count  (T.pack firstL) (T.pack secondL)
     in
-    if foundNumber == 0 then False
-    else True
+    foundNumber /= 0
 
 
 
