@@ -144,10 +144,10 @@ import           Data.GraphViz                     as GV
 import           Data.GraphViz.Attributes.Complete (Attribute (Label),
                                                     Label (..))
 import           Data.Monoid
-import           Debug.Trace
 import           GeneralUtilities
 import           ParallelUtilities
 
+--import           Debug.Trace
 
 
 -- | showGraph a semi-formatted show for Graphs
@@ -557,7 +557,7 @@ reIndexLNode vertexMap inNode =
 -- needs to be merged first if graphs are combined--or indices will be wrong
 mergeNetNodesAndEdges :: P.Gr T.Text Double -> P.Gr T.Text Double
 mergeNetNodesAndEdges inGraph =
-  trace (showGraph inGraph) (
+  --trace (showGraph inGraph) (
   if G.isEmpty inGraph then G.empty
   else
     let nodeList = G.labNodes inGraph
@@ -572,6 +572,7 @@ mergeNetNodesAndEdges inGraph =
           reindexedNodeList = fmap (reIndexLNode nodeMap) (G.labNodes inGraph)
           reIndexedEdgeList = fmap (reIndexLEdge nodeMap) (G.labEdges inGraph)
       in
+      -- to make nodes sequencentioal required later
       G.mkGraph reindexedNodeList reIndexedEdgeList
 
     -- modifications were made to graph
@@ -579,9 +580,9 @@ mergeNetNodesAndEdges inGraph =
         let (nodesToDelete, edgesToDelete, edgesToCreate) = fromJust graphDelta
             newGraph = G.insEdges edgesToCreate $ G.delNodes (fmap fst nodesToDelete) $ G.delEdges (fmap G.toEdge edgesToDelete) inGraph
         in
-        trace (showGraph newGraph)
+        --trace (showGraph newGraph)
         mergeNetNodesAndEdges newGraph
-    )
+    --)
 
 -- | getMergeNodeEdgeDelta takes a graph and list of labelled nodes
 -- merges the nodes with identical labels, dfeltes all but the first
