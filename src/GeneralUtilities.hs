@@ -38,6 +38,19 @@ module GeneralUtilities where
 
 import           Data.Array
 import qualified Data.Text  as T
+import           System.Random
+import           Data.Array.IO
+import           Control.Monad
+import           Data.Hashable
+import           Data.List
+import           Data.Time
+import           Data.Time.Clock.POSIX
+import           System.IO.Unsafe
+import           Text.Read
+import           Data.Maybe
+-- import           Data.Global -- won't compile perhaps ghc-9 issue
+
+
 
 
 -- | functions for triples, quadruples
@@ -61,6 +74,39 @@ thd4 (_,_,e,_) = e
 
 fth4 :: (a,b,c,d) -> d
 fth4 (_,_,_,f) = f
+
+fst5 :: (a,b,c,d,e) -> a
+fst5 (e,_,_,_,_) = e
+
+snd5 :: (a,b,c,d,e) -> b
+snd5 (_,e,_,_,_) = e
+
+thd5 :: (a,b,c,d,e)-> c
+thd5 (_,_,e,_,_) = e
+
+fth5 :: (a,b,c,d,e) -> d
+fth5 (_,_,_,e,_) = e
+
+fft5 :: (a,b,c,d,e) -> e
+fft5 (_,_,_,_,e) = e
+
+fst6 :: (a,b,c,d,e,f) -> a
+fst6 (e,_,_,_,_,_) = e
+
+snd6 :: (a,b,c,d,e,f) -> b
+snd6 (_,e,_,_,_,_) = e
+
+thd6 :: (a,b,c,d,e,f)-> c
+thd6 (_,_,e,_,_,_) = e
+
+fth6 :: (a,b,c,d,e,f) -> d
+fth6 (_,_,_,e,_,_) = e
+
+fft6 :: (a,b,c,d,e,f) -> e
+fft6 (_,_,_,_,e,_) = e
+
+six6 :: (a,b,c,d,e,f) -> f
+six6 (_,_,_,_,_,e) = e
 
 -- | editDistance is a naive edit distance between two lists
 -- takes two  lists and returns edit distance
@@ -119,9 +165,89 @@ isSequentialSubsequence firstL secondL
     in
     foundNumber /= 0
 
+-- | shuffle Randomly shuffles a list
+--   /O(N)/
+-- from https://wiki.haskell.org/Random_shuffle
+shuffle :: [a] -> IO [a]
+shuffle xs = do
+        ar <- newArrayLocal  n xs
+        forM [1..n] $ \i -> do
+            j <- randomRIO (i,n)
+            vi <- readArray ar i
+            vj <- readArray ar j
+            writeArray ar j vi
+            return vj
+  where
+    n = length xs
+    newArrayLocal :: Int -> [a] -> IO (IOArray Int a)
+    newArrayLocal  nL xsL =  newListArray (1,nL) xsL
 
 
 
+-- | randomList generates a random list from a seed--no IO or ST monad 
+-- but needs a good seed
+randomList :: Int -> [Double]
+randomList seed = randoms (mkStdGen seed) :: [Double]
 
 
+-- | selectListCostPairs is generala to list of (a, Double)
+-- but here used for graph sorting and selecting)takes a pair of graph representation (such as String or fgl graph), and
+--- a Double cost and returns the whole of number of 'best', 'unique' or  'random' cost
+-- need an Eq function such as '==' for Strings or equal for fgl
+-- optionsList must all be lower case to avoicd
+-- assumes options are all lower case
+-- options are pairs of Sting and number for number or graphs to keeep, if number is set to (-1) then all are kept
+-- if the numToKeep to return graphs is lower than number of graphs, the "best" number are returned
+-- except for random.
+selectListCostPairs :: (Eq a, Hashable a) => (a -> a -> Bool) -> [(a, Double)] -> [String] -> Int -> [(a, Double)] 
+selectListCostPairs compFun pairList optionList numToKeep = 
+  if null optionList then error "No options specified for selectGraphCostPairs"
+  else if null pairList then []
+  else 
+    let firstPass = if ("unique" `elem` optionList) then nubBy compFunPair pairList
+                    else pairList
+        secondPass = if ("best" `elem` optionList) then reverse $ sortOn snd firstPass
+                     else firstPass
+    in
+    if ("random" `notElem` optionList) then take numToKeep secondPass 
+    else -- shuffling with hash of structure as seed (not the best but simple for here)
+      let seed = getSystemTimeSecondsUnsafe -- hash pairList
+          randList = randomList seed
+          pairListWRand = zip randList secondPass
+          thirdPass = fmap snd $ sortOn fst pairListWRand
 
+      in
+      take numToKeep thirdPass
+  where compFunPair fGraph sGraph = compFun (fst fGraph) (fst sGraph)
+
+-- | getSystemTimeSeconds gets teh syste time and returns IO Int
+getSystemTimeSeconds :: IO Int
+getSystemTimeSeconds = do
+    systemTime <- getCurrentTime  
+    let timeD = (round $ utcTimeToPOSIXSeconds systemTime) :: Int
+    return timeD
+
+{-# NOINLINE getSystemTimeSecondsUnsafe #-}
+-- | getSystemTimeSecondsUnsafe gets the system time and returns Int via unsafePerformIO
+-- without the NOINLINE the function would probbaly be comverted to a 
+-- constant which would be "safe" and OK as a random seed or if only called once
+getSystemTimeSecondsUnsafe :: Int
+getSystemTimeSecondsUnsafe = unsafePerformIO getSystemTimeSeconds
+    
+-- | stringToInt converts a String to an Int
+stringToInt :: String -> String -> Int
+stringToInt fileName inStr = 
+  let result = readMaybe inStr :: Maybe Int
+  in
+  if result == Nothing then errorWithoutStackTrace ("\n\n'Read' 'tcm' format error non-Integer value " ++ inStr ++ " in " ++ fileName)
+  else fromJust result
+
+-- | makeIndexPairs takes n and creates upper triangular matrix pairs (0,m)
+makeIndexPairs :: Bool -> Int -> Int -> Int -> Int -> [(Int, Int)]
+makeIndexPairs doDiagValues numI numJ indexI indexJ =
+    if indexI == numI then []
+    else if indexJ == numJ then makeIndexPairs doDiagValues numI numJ (indexI + 1) 0
+    else 
+        if doDiagValues && (indexI == indexJ) then (indexI, indexJ) : makeIndexPairs doDiagValues numI numJ indexI (indexJ + 1)
+        else if (indexI < indexJ) then (indexI, indexJ) : makeIndexPairs doDiagValues numI numJ indexI (indexJ + 1)
+        else makeIndexPairs doDiagValues numI numJ indexI (indexJ + 1)

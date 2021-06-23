@@ -44,6 +44,9 @@ executable euncon
                 , bv
                 , array
                 , split
+                , random
+                , hashable
+                , time
                 
                 
   default-extensions : BangPatterns                
@@ -55,6 +58,7 @@ executable euncon
                   GeneralUtilities
                   ParallelUtilities
                   ParseCommands
+                  Cyclic
 
 
 

@@ -127,7 +127,13 @@ module GraphFormatUtilities (forestEnhancedNewickStringList2FGLList,
                              convertGraphToStrictText,
                              splitVertexList,
                              relabelFGLEdgesDouble,
-                             getDistToRoot
+                             getDistToRoot,
+                             fgl2DotString,
+                             modifyVertexEdgeLabels,
+                             relabelGraphLeaves,
+                             checkGraphsAndData,
+                             cyclic,
+                             reIndexLeavesEdges
                             ) where
 
 import           Control.Parallel.Strategies
@@ -143,10 +149,15 @@ import qualified Data.Text.Lazy                    as T
 import           Data.GraphViz                     as GV
 import           Data.GraphViz.Attributes.Complete (Attribute (Label),
                                                     Label (..))
+import qualified Data.GraphViz.Printing            as GVP
 import           Data.Monoid
 import           GeneralUtilities
 import           ParallelUtilities
+import qualified Cyclic                            as C
+import Debug.Trace
 
+
+--import qualified Data.Graph.Analysis  as GAC  currently doesn't compile (wanted to use for cycles)
 --import           Debug.Trace
 
 
@@ -403,7 +414,7 @@ getChildren :: T.Text -> [T.Text]
 getChildren inText
   | T.null inText = []
   | (T.head inText /= '(') || (T.last inText /= ')') = error ("Invalid Extended Newick component," ++
-    " must begin with \'(\'' and end with \')\' : " ++ T.unpack inText)
+    " must begin with \'(\'' and end with \')\' : " ++ T.unpack inText ++ "\nPerhaps missing commas ',' in F/E/Newick format?")
   | otherwise =
   -- modify for indegree 1 outdegree 1 and print warning.
   let guts = T.init $ T.tail inText -- removes leading and training parens
@@ -526,30 +537,6 @@ getNodeIndexPair uniqueList pairList nodeToCheckList =
           newPair = (index, fst existingNode)
       in
       getNodeIndexPair uniqueList (newPair : pairList) (tail nodeToCheckList)
-
--- | reIndexEdge takes an (Int, Int) map, labelled edge, and returns a new labelled edge with new e,u vertices
-reIndexLEdge ::  Map.Map Int Int -> G.LEdge Double -> G.LEdge Double
-reIndexLEdge vertexMap inEdge =
-  if Map.null vertexMap then error "Null vertex map"
-  else
-    let (e,u,label) = inEdge
-        newE = Map.lookup e vertexMap
-        newU = Map.lookup u vertexMap
-    in
-    if isNothing newE then error ("Error looking up vertex " ++ show e ++ " in " ++ show (e,u))
-    else if isNothing newU then error ("Error looking up vertex " ++ show u ++ " in " ++ show (e,u))
-    else (fromJust newE, fromJust newU, label)
-
--- | reIndexNode takes an (Int, Int) map, labelled node, and returns a new labelled node with new vertex
-reIndexLNode ::  Map.Map Int Int -> G.LNode T.Text -> G.LNode T.Text
-reIndexLNode vertexMap inNode =
-  if Map.null vertexMap then error "Null vertex map"
-  else
-    let (index,label) = inNode
-        newIndex = Map.lookup index vertexMap
-    in
-    if isNothing newIndex then error ("Error looking up vertex " ++ show index ++ " in " ++ show inNode)
-    else (fromJust newIndex, label)
 
 -- | mergeNetNodesAndEdges takes a single graph and merges
 -- nodes and edges due to network nodes and edges
@@ -1017,4 +1004,165 @@ convertGraphToStrictText inGraph =
     in
     G.mkGraph (zip nodeIndices nodesStrictText) (G.labEdges inGraph)
 
+-- | fgl2DotString takes an FGL graph and returns a String 
+fgl2DotString :: (Labellable a, Labellable b) => P.Gr a b -> String
+fgl2DotString inGraph =
+  T.unpack $ GVP.renderDot $ GVP.toDot $ GV.graphToDot GV.quickParams inGraph
 
+ -- | modifyVertexEdgeLabels keeps or removes vertex and edge labels
+modifyVertexEdgeLabels :: (Show b) => Bool -> Bool -> P.Gr String b -> P.Gr String String
+modifyVertexEdgeLabels keepVertexLabel keepEdgeLabel inGraph =
+  let inLabNodes = G.labNodes inGraph
+      degOutList = G.outdeg inGraph <$> G.nodes inGraph
+      nodeOutList = zip  degOutList inLabNodes
+      leafNodeList = snd <$> filter ((==0).fst) nodeOutList
+      nonLeafNodeList = snd <$> filter ((>0).fst) nodeOutList
+      newNonLeafNodes = if keepVertexLabel then nonLeafNodeList
+                        else zip (fmap fst nonLeafNodeList) (replicate (length nonLeafNodeList) "")
+      inLabEdges = G.labEdges inGraph
+      inEdges = fmap G.toEdge inLabEdges
+      newEdges = if keepEdgeLabel then fmap showLabel inLabEdges
+                 else fmap (`G.toLEdge` "") inEdges
+  in
+  G.mkGraph (leafNodeList ++ newNonLeafNodes) newEdges
+    where showLabel (e,u,l) = (e,u,show l)
+
+-- | relabelLeaf takes list of pairs and if current leaf label
+-- is snd in a pair, it replaces the label with the first of the pair
+relabelLeaf :: [(T.Text, T.Text)] -> G.LNode T.Text -> G.LNode T.Text
+relabelLeaf namePairList leafNode =
+  if null namePairList then leafNode
+  else 
+    let foundName = find ((== (snd leafNode)) .snd) namePairList 
+    in
+    if foundName == Nothing then leafNode
+    else (fst leafNode, (fst $ fromJust foundName))
+
+    
+-- | relabelGraphLeaves takes and FGL graph T.Text Double and renames based on pair of Text
+-- old name second, new name first in pair
+relabelGraphLeaves :: [(T.Text, T.Text)] -> P.Gr T.Text Double -> P.Gr T.Text Double
+relabelGraphLeaves namePairList inGraph =
+  if null namePairList then inGraph
+  else if G.isEmpty inGraph then inGraph
+  else 
+      let (rootVerts, leafList, otherVerts) = splitVertexList inGraph
+          edgeList = G.labEdges inGraph
+          newLeafList =  fmap (relabelLeaf namePairList) leafList
+      in
+      G.mkGraph (newLeafList ++ rootVerts ++ otherVerts) edgeList
+
+-- | checkGraphsAndData leaf names (must be sorted) and a graph
+-- nedd to add other sanity checks
+-- does not check for cycles becasue that is done on input
+checkGraphsAndData :: [T.Text] -> P.Gr T.Text Double -> P.Gr T.Text Double
+checkGraphsAndData leafNameList inGraph =
+  if G.isEmpty inGraph then inGraph
+  else if null leafNameList then error "Empty leaf name list"
+  else 
+    let (_, leafList, _) = splitVertexList inGraph
+        graphLeafNames = sort $ fmap snd leafList
+        nameGroupsGT1 = filter ((>1).length) $ group graphLeafNames
+    in
+    -- check for repeated terminals
+    if not $ null nameGroupsGT1 then errorWithoutStackTrace ("Input graph has repeated leaf labels" ++ 
+      (show $ fmap head nameGroupsGT1))
+    -- check for leaf complement identity 
+    else if leafNameList /= graphLeafNames then 
+      let inBoth = intersect leafNameList graphLeafNames
+          onlyInData = leafNameList \\ inBoth
+          onlyInGraph = graphLeafNames \\ inBoth
+      in
+      errorWithoutStackTrace ("Data leaf list does not match graph leaf list: \n\tOnly in data : " ++ show onlyInData 
+        ++ "\n\tOnly in Graph (concatenated names could be due to lack of commas ',' or unbalanced parentheses '()') " ++ show onlyInGraph)
+    
+    else inGraph
+
+-- | cyclic maps to cyclic funcitn in moduel Cyclic.hs
+cyclic :: (G.DynGraph g) => g a b -> Bool
+cyclic inGraph = C.cyclic inGraph
+
+-- | makeHTULabel take HTU index and amkes into HTU#
+makeHTULabel :: Int -> T.Text
+makeHTULabel index = T.pack $ "HTU" ++ show index
+
+-- | getLeafLabelMatches tyakes the total list and looks for elements in the smaller local leaf set
+-- retuns int index of the match or (-1) if not found so that leaf can be added in orginal order
+getLeafLabelMatches ::[G.LNode T.Text] -> G.LNode T.Text -> (Int, Int)
+getLeafLabelMatches localLeafList totNode =
+  if null localLeafList then (-1, fst totNode)
+  else
+    let (index, leafString) = head localLeafList
+    in
+    if snd totNode == leafString then (index, fst totNode)
+    else getLeafLabelMatches (tail localLeafList) totNode
+
+-- | reIndexLeavesEdges Leaves takes input fgl graph and total input leaf sets and reindexes node, and edges
+-- such that leaves are nodes 0-n-1, then roots and then other htus and edges are reindexed based on that via a map
+reIndexLeavesEdges :: [T.Text] -> P.Gr T.Text Double -> P.Gr T.Text Double
+reIndexLeavesEdges leafList inGraph = 
+  if G.isEmpty inGraph then G.empty
+  else
+      --trace ("In Graph :" ++ (show $ G.order inGraph) ++ " " ++ (show $ G.size inGraph) ++ "\n" ++ (showGraph inGraph)) (
+      --trace ("LL:" ++ (show $ length leafList) ++ " " ++ (show $ length $ G.nodes inGraph)) (
+      -- reindex nodes and edges and add in new nodes (total leaf set + local HTUs)
+      -- create a map between inputLeafSet and graphLeafSet which is the canonical enumeration
+      -- then add in local HTU nodes and for map as well
+      -- trace ("Original graph: " ++ (showGraph inGraph)) (
+      let canonicalLeafOrder = zip [0..((length leafList) - 1)] leafList
+          (rootList, leafVertexList, nonRootHTUList) = splitVertexList inGraph
+          --correspondanceList = parmap rdeepseq (getLeafLabelMatches canonicalLeafOrder) leafVertexList
+          correspondanceList = fmap (getLeafLabelMatches leafVertexList) canonicalLeafOrder
+          matchList = filter ((/=(-1)).fst) correspondanceList
+          htuList = fmap fst $ rootList ++ nonRootHTUList
+          --htuList = fmap fst (G.labNodes inGraph) \\ fmap fst leafVertexList
+          htuNumber =  length htuList
+          newHTUNumbers = [(length leafList)..(length leafList + htuNumber - 1)]
+          newHTULabels = fmap makeHTULabel newHTUNumbers
+          htuMatchList = zip htuList newHTUNumbers
+          
+      in
+      --trace (show canonicalLeafOrder ++ "\n" ++ show leafVertexList ++ "\n" ++ show matchList ++ "\n" ++ show htuMatchList) (
+      let
+          --remove order dependancey
+          -- htuList = [(length inputLeafList)..(length inputLeafList + htuNumber - 1)]
+          vertexMap = Map.fromList (matchList ++ htuMatchList)
+          reIndexedEdgeList = fmap (reIndexLEdge vertexMap) (G.labEdges inGraph)
+
+          --newNodeNumbers = [0..(length leafList + htuNumber - 1)]
+          --attributeList = replicate (length leafList + htuNumber) (T.pack "") -- origAttribute
+          --newNodeList = zip newNodeNumbers attributeList
+          newNodeList = canonicalLeafOrder ++ (zip newHTUNumbers newHTULabels)
+          newGraph = G.mkGraph newNodeList reIndexedEdgeList
+      in
+      --trace ("Out Graph :" ++ (show $ G.order newGraph) ++ " " ++ (show $ G.size newGraph) ++ "\n" ++ (showGraph newGraph))
+      --trace ("Orig graph: " ++ (G.prettify inGraph) ++ "\nNew graph: " ++ (G.prettify newGraph))
+      newGraph
+      --))
+      
+
+-- | reIndexEdge takes an (Int, Int) map, labelled edge, and returns a new labelled edge with new e,u vertices
+reIndexLEdge ::  Map.Map Int Int -> G.LEdge Double -> G.LEdge Double
+reIndexLEdge vertexMap inEdge =
+  if Map.null vertexMap then error "Null vertex map"
+  else
+    let (e,u,label) = inEdge
+        newE = Map.lookup e vertexMap
+        newU = Map.lookup u vertexMap
+    in
+    --trace ((show $ Map.size vertexMap) ++ " " ++ (show $ Map.toList vertexMap)) (
+    if isNothing newE then error ("Edge error looking up vertex " ++ show e ++ " in " ++ show (e,u))
+    else if isNothing newU then error ("Edge error looking up vertex " ++ show u ++ " in " ++ show (e,u))
+    else (fromJust newE, fromJust newU, label)
+    --)
+
+-- | reIndexNode takes an (Int, Int) map, labelled node, and returns a new labelled node with new vertex
+reIndexLNode ::  Map.Map Int Int -> G.LNode T.Text -> G.LNode T.Text
+reIndexLNode vertexMap inNode =
+  if Map.null vertexMap then error "Null vertex map"
+  else
+    let (index,label) = inNode
+        newIndex = Map.lookup index vertexMap
+    in
+    if isNothing newIndex then error ("Error looking up vertex " ++ show index ++ " in " ++ show inNode)
+    else (fromJust newIndex, label)

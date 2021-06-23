@@ -65,7 +65,7 @@ import           ParallelUtilities
 import qualified ParseCommands                     as PC
 import           System.Environment
 import           System.IO
---import           Debug.Trace
+import           Debug.Trace
 
 
 -- | turnOnOutZeroBit turns on the bit 'nleaves" signifying that
@@ -80,15 +80,27 @@ turnOnOutZeroBit inBitVect nLeaves = BV.or [B.bit nLeaves, inBitVect]
 turnOffOutZeroBit :: BV.BV -> Int -> BV.BV
 turnOffOutZeroBit inBitVect nLeaves = BV.extract (nLeaves - 1) 0 inBitVect
 
--- | setOutDegreeOneBit takes the number of children, number of leaves and bitvector and
--- sets nleaves bit to 1 if number of children == 1 otherwise clears/removes nleaves bit
-setOutDegreeOneBit :: Int -> Int -> BV.BV -> BV.BV
-setOutDegreeOneBit outDegree nLeaves inBitVect =
-  if outDegree == 1 then turnOnOutZeroBit inBitVect nLeaves
-  else turnOffOutZeroBit inBitVect nLeaves
 
--- | getRoot takes a greaph and list of nodes and returns vertex with indegree 0
+-- | setOutDegreeOneBits assumes outdegree of vertex = 1, takes the number of leaves, bitvector 
+-- repersentation (rawBV) of vertex, a sorted list of outdegree=1 vertices and the vertex index
+-- and creates a bitvector to prepend of length the number of outdgree=1 vertices where
+-- the correpsonding vertex index position in ilist is 'On' and the remainder are 'Off'
+-- this insures a unique lablelling for all outdegree=1 vertices 
+setOutDegreeOneBits :: BV.BV -> [Int] -> Int -> BV.BV
+setOutDegreeOneBits inBitVect out1VertexList vertexIndex =
+  if null out1VertexList then error "Empty outdegree=1 vertex list in setOutDegreeOneBits"
+  else 
+    let vertListIndex = elemIndex vertexIndex out1VertexList
+        vertexPosition = fromJust vertListIndex
+        boolList = (replicate vertexPosition False) ++ [True] ++ (replicate ((length out1VertexList) - vertexPosition - 1) False)
+        prependBitVect = BV.fromBits boolList
+    in
+    if vertListIndex == Nothing then error ("Vertex " ++ (show vertexIndex) ++ " not found in list " ++ show out1VertexList)
+    else BV.append prependBitVect inBitVect
+
+-- | getRoot takes a graph and list of nodes and returns vertex with indegree 0
 -- so assumes a connected graph--with a single root--not a forest
+-- this does noit include unconnected leaves
 getRoots :: P.Gr a b -> [G.Node] -> [Int]
 getRoots inGraph nodeList =
   if null nodeList then []
@@ -97,6 +109,20 @@ getRoots inGraph nodeList =
     in
     if (G.indeg inGraph firstNode == 0) && (G.outdeg inGraph firstNode > 0) then firstNode : getRoots inGraph (tail nodeList)
     else getRoots inGraph (tail nodeList)
+
+
+-- | getUnConnectedLeaves takes a graph and list of nodes and returns vertex with indegree 0
+-- and outdegree == 0
+getUnConnectedLeaves :: P.Gr a b -> [G.Node] -> [Int]
+getUnConnectedLeaves inGraph nodeList =
+  if null nodeList then []
+  else
+    let firstNode = head nodeList
+    in
+    if (G.indeg inGraph firstNode == 0) && (G.outdeg inGraph firstNode == 0) then firstNode : getUnConnectedLeaves inGraph (tail nodeList)
+    else getUnConnectedLeaves inGraph (tail nodeList)
+
+
 
 -- | getUnconmnectedNOdes takes a graph and list of nodes and returns vertex with indegree 0
 -- and outdegeee 0
@@ -113,13 +139,18 @@ getUnConnectedNodes inGraph nLeaves nodeList =
 
 
 -- | makeNodeFromChildren gets bit vectors as union of children in a post order traversal from leaves
-makeNodeFromChildren :: P.Gr String String -> Int -> V.Vector (G.LNode BV.BV) -> Int -> [G.LNode BV.BV]
-makeNodeFromChildren inGraph nLeaves leafNodes myVertex =
+-- the prepending of a single 'On' bit if there is only once child (setOutDegreeOneBit)
+-- is modified to allow for multiple outdegree 1 vertices as parent of single vertex
+makeNodeFromChildren :: P.Gr String String -> Int -> V.Vector (G.LNode BV.BV) -> [Int] -> Int -> [G.LNode BV.BV]
+makeNodeFromChildren inGraph nLeaves leafNodes out1VertexList myVertex =
   if myVertex < nLeaves then [leafNodes V.! myVertex]
     else
       let myChildren = G.suc inGraph myVertex
-          myChildrenNodes = parmap rdeepseq (makeNodeFromChildren inGraph nLeaves leafNodes) myChildren
-          myBV = setOutDegreeOneBit (length myChildren) nLeaves $ BV.or $ fmap (snd . head) myChildrenNodes
+          myChildrenNodes = parmap rdeepseq (makeNodeFromChildren inGraph nLeaves leafNodes out1VertexList) myChildren
+          
+          rawBV = BV.or $ fmap (snd . head) myChildrenNodes
+          myBV = if (length myChildren /= 1) then rawBV
+                 else setOutDegreeOneBits rawBV out1VertexList myVertex
       in
       (myVertex, myBV) : concat myChildrenNodes
 
@@ -134,11 +165,17 @@ getNodesFromARoot inGraph nLeaves leafNodes rootVertex =
   else
     let rootChildVerts = G.suc inGraph rootVertex
 
+        -- get outdree = 1 node list for creting prepended bit vectors
+        out1VertexList = sort $ filter ((==1).G.outdeg inGraph) $ G.nodes inGraph
+
         -- recurse to children since assume only leaves can be labbeled with BV.BVs
         -- fmap becasue could be > 2 (as in at root)
-        rootChildNewNodes = parmap rdeepseq (makeNodeFromChildren inGraph nLeaves (V.fromList leafNodes)) rootChildVerts
+        rootChildNewNodes = parmap rdeepseq (makeNodeFromChildren inGraph nLeaves (V.fromList leafNodes) out1VertexList) rootChildVerts
 
-        rootBV = setOutDegreeOneBit (length rootChildVerts) nLeaves $ BV.or $ fmap (snd . head) rootChildNewNodes
+        -- check if outdegree = 1
+        rawBV = BV.or $ fmap (snd . head) rootChildNewNodes
+        rootBV = if (length rootChildVerts /= 1) then rawBV
+                 else setOutDegreeOneBits rawBV out1VertexList rootVertex
     in
     (rootVertex, rootBV) : concat rootChildNewNodes
 
@@ -277,11 +314,11 @@ getLeafListNewick inGraph =
 
 -- | checkNodesSequential takes a list of nodes and returns booolean
 -- True if nodes are input with seqeutial numerical indices
--- False if not--scres up reindexing later which assumes they are successive
+-- False if not--screws up reindexing later which assumes they are successive
 checkNodesSequential :: G.Node -> [G.Node] -> Bool
 checkNodesSequential prevNode inNodeList
   | null inNodeList = True
-  | (head inNodeList - prevNode) /= 1 = False
+  | (head inNodeList - prevNode) /= 1 = trace ("Index or indices missing between " ++ (show $ head inNodeList) ++ " and " ++ (show prevNode))  False
   | otherwise = checkNodesSequential (head inNodeList) (tail inNodeList)
 
 -- | reAnnotateGraphs takes parsed graph input and reformats for EUN
@@ -695,18 +732,30 @@ fglTextB2Text inGraph =
     in
     G.mkGraph labNodes newEdges
 
--- | addUrRootAndEdges cretes a single root and adds edges to existing roots
+-- | addUrRootAndEdges creates a single root and adds edges to existing roots
+-- and unconnected leaves
 addUrRootAndEdges :: P.Gr String Double -> P.Gr String Double
 addUrRootAndEdges inGraph =
   let origLabVerts = G.labNodes inGraph
+      origLabEdges = G.labEdges inGraph
       origRootList = getRoots inGraph (fst <$> origLabVerts)
+      unconnectedLeafList = getUnConnectedLeaves inGraph (fst <$> origLabVerts)
   in
-  if length origRootList == 1 then inGraph
+  -- all ok--no unconnected vertices
+  if (length origRootList == 1) && (null unconnectedLeafList) then inGraph
+
+  -- add edges to unconencted leaves
+  else if length origRootList == 1 then
+    let newEdgeList = zip3 (replicate (length unconnectedLeafList) (head origRootList)) unconnectedLeafList (replicate (length unconnectedLeafList) 0.0)
+    in
+    G.mkGraph origLabVerts (origLabEdges ++ newEdgeList)
+
+  -- add UR root, edges to existing roots, and edges to unconnected leaves
   else
-    let origLabEdges = G.labEdges inGraph
+    let unRootedVertices = origRootList ++ unconnectedLeafList  
         numOrigVerts = length origLabVerts
         newRoot = (numOrigVerts, "HTU" ++ show numOrigVerts)
-        newEdgeList = zip3 (replicate (length origRootList) numOrigVerts) origRootList (replicate (length origRootList) 0.0)
+        newEdgeList = zip3 (replicate (length unRootedVertices) numOrigVerts) unRootedVertices (replicate (length unRootedVertices) 0.0)
     in
     G.mkGraph (origLabVerts ++ [newRoot]) (origLabEdges ++ newEdgeList)
 
@@ -772,12 +821,13 @@ main =
     let totallLeafSet = zip [0..(length totallLeafString - 1)] totallLeafString
     hPutStrLn stderr ("There are " ++ show (length totallLeafSet) ++ " unique leaves in input graphs")
 
+    -- Should add check for cycles here
     let sanityListDot = parmap rdeepseq  (checkNodesSequential  (-1)) (fmap G.nodes inputGraphListDot)
     let sanityListNewick = parmap rdeepseq  (checkNodesSequential  (-1)) (fmap G.nodes newickGraphList)
     let sanityList = sanityListDot ++ sanityListNewick
     let allOK = foldl' (&&) True sanityList
     if allOK then hPutStrLn stderr "\nInput Graphs passed sanity checks"
-    else error ("Sanity check error(s) on input graphs (False = Failed) Non-sequential node indices: " ++ show (zip [0..(length sanityList - 1)] sanityList))
+    else errorWithoutStackTrace ("Sanity check error(s) on input graphs (False = Failed) Non-sequential node indices: " ++ show (zip [0..(length sanityList - 1)] sanityList))
 
     -- Add in "missing" leaves from individual graphs and renumber edges
     let fullLeafSetGraphsDot = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsDot inputGraphListDot
