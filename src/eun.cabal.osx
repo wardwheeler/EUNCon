@@ -23,12 +23,11 @@ executable euncon
                 -threaded 
                 -O2
                 -- for weeder
-                -fwrite-ide-info 
-                -- Delete line below dor OSX
-                -- -optl-static -optl-pthread
+--                -fwrite-ide-info 
+--                    -optl-static -optl-pthread
                 -static
                 -- for native code generation remove the line below
-                -- -fllvm
+--                -fllvm
 
 -- delete these for OSX
 --  cc-options: -static
@@ -45,6 +44,9 @@ executable euncon
                 , bv
                 , array
                 , split
+                , random
+                , hashable
+                , time
                 
                 
   default-extensions : BangPatterns                
@@ -56,6 +58,7 @@ executable euncon
                   GeneralUtilities
                   ParallelUtilities
                   ParseCommands
+                  Cyclic
 
 
 
