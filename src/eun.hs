@@ -607,7 +607,8 @@ getCompatibleList comparison inBVListList =
     let uniqueBVList = nub $ concat inBVListList
         bvCompatibleListList = parmap rdeepseq (getGraphCompatibleList comparison inBVListList) uniqueBVList
     in
-    bvCompatibleListList
+    --this filter for some input networks
+    filter (not . null) bvCompatibleListList
 
 -- | getThresholdNodes takes a threshold and keeps those unique objects present in the threshold percent or
 -- higher.  Sorted by frequency (low to high)
