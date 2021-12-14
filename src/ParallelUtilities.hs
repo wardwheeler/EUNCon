@@ -40,7 +40,9 @@ module ParallelUtilities (parmap,
                           rnf,
                           myStrategy,
                           myStrategyRS,
-                          myStrategyRPAR
+                          myStrategyRPAR,
+                          myParListChunk,
+                          myParListChunkRDS
                           ) where
 
 import           Control.Concurrent
@@ -64,6 +66,12 @@ seqParMap :: Traversable t => Strategy b -> (a -> b) -> t a -> t b
 seqParMap strat f =
   if getNumThreads > 1 then parmap strat f
   else fmap f
+
+myParListChunk :: Strategy a -> Strategy [a] 
+myParListChunk localStrategy = parListChunk getNumThreads localStrategy
+
+myParListChunkRDS :: (NFData a) => Strategy [a] 
+myParListChunkRDS = parListChunk getNumThreads rdeepseq
 
 myStrategy :: (NFData b) => Strategy b
 myStrategy = rdeepseq

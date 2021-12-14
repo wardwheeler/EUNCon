@@ -61,7 +61,7 @@ import qualified Data.Set                          as S
 import qualified Data.Text.Lazy                    as T
 import qualified Data.Vector                       as V
 import qualified GraphFormatUtilities              as PhyP
-import           ParallelUtilities
+import qualified ParallelUtilities                 as PU
 import qualified ParseCommands                     as PC
 import           System.Environment
 import           System.IO
@@ -146,7 +146,7 @@ makeNodeFromChildren inGraph nLeaves leafNodes out1VertexList myVertex =
   if myVertex < nLeaves then [leafNodes V.! myVertex]
     else
       let myChildren = G.suc inGraph myVertex
-          myChildrenNodes = parmap rdeepseq (makeNodeFromChildren inGraph nLeaves leafNodes out1VertexList) myChildren
+          myChildrenNodes = fmap (makeNodeFromChildren inGraph nLeaves leafNodes out1VertexList) myChildren `using` PU.myParListChunkRDS
           
           rawBV = BV.or $ fmap (snd . head) myChildrenNodes
           myBV = if (length myChildren /= 1) then rawBV
@@ -170,7 +170,7 @@ getNodesFromARoot inGraph nLeaves leafNodes rootVertex =
 
         -- recurse to children since assume only leaves can be labbeled with BV.BVs
         -- fmap becasue could be > 2 (as in at root)
-        rootChildNewNodes = parmap rdeepseq (makeNodeFromChildren inGraph nLeaves (V.fromList leafNodes) out1VertexList) rootChildVerts
+        rootChildNewNodes = fmap (makeNodeFromChildren inGraph nLeaves (V.fromList leafNodes) out1VertexList) rootChildVerts `using` PU.myParListChunkRDS
 
         -- check if outdegree = 1
         rawBV = BV.or $ fmap (snd . head) rootChildNewNodes
@@ -418,8 +418,8 @@ makeEUN ::  [G.LNode BV.BV] -> [G.LEdge (BV.BV,BV.BV)] -> P.Gr BV.BV (BV.BV, BV.
 makeEUN nodeList fullEdgeList fullGraph =
   let -- counterList = [0..(length fullEdgeList - 1)]
       -- requiredEdges = concat $ fmap (testEdge nodeList fullEdgeList) counterList
-      requiredEdges = concat $ parmap rdeepseq (testEdge fullGraph) fullEdgeList
-      newGraph = G.mkGraph nodeList requiredEdges
+      requiredEdges = fmap (testEdge fullGraph) fullEdgeList `using` PU.myParListChunkRDS
+      newGraph = G.mkGraph nodeList (concat requiredEdges)
   in
   newGraph
 
@@ -461,7 +461,7 @@ reIndexAndAddLeavesEdges totallLeafSet (inputLeafList, inGraph) =
       -- create a map between inputLeafSet and totalLeafSet which is the canonical enumeration
       -- then add in local HTU nodes and for map as well
       -- trace ("Original graph: " ++ (showGraph inGraph)) (
-      let correspondanceList = parmap rdeepseq (getLeafLabelMatches inputLeafList) totallLeafSet
+      let correspondanceList = fmap (getLeafLabelMatches inputLeafList) totallLeafSet `using` PU.myParListChunkRDS
           matchList = filter ((/=(-1)).fst) correspondanceList
           --remove order dependancey
           -- htuList = [(length inputLeafList)..(length inputLeafList + htuNumber - 1)]
@@ -554,7 +554,7 @@ combinable comparison bvList bvIn
   | comparison == "combinable" = -- combinable sensu Nelson 1979
     if null bvList then [bvIn]
     else
-      let intersectList = parmap rdeepseq (checkBitVectors bvIn) bvList
+      let intersectList = fmap (checkBitVectors bvIn) bvList `using` PU.myParListChunkRDS
           isCombinable = foldl' (&&) True intersectList
       in
       [bvIn | isCombinable]
@@ -575,13 +575,13 @@ combineComponents comparison firstList secondList
     if null firstList then secondList
     else if null secondList then firstList
     else
-      let firstCombinableSecond = concat $ parmap rdeepseq (combinable comparison secondList) firstList
-          secondCombinableFirst = concat $ parmap rdeepseq (combinable comparison firstList) secondList
+      let firstCombinableSecond = concat (fmap (combinable comparison secondList) firstList `using` PU.myParListChunkRDS)
+          secondCombinableFirst = concat (fmap (combinable comparison firstList) secondList `using` PU.myParListChunkRDS)
       in
       nub $ firstCombinableSecond ++ secondCombinableFirst
   | comparison == "identity" =
     if null firstList || null secondList then []
-    else concat $ parmap rdeepseq (combinable comparison secondList) firstList
+    else concat (fmap (combinable comparison secondList) firstList `using` PU.myParListChunkRDS)
   | otherwise = errorWithoutStackTrace("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
 
 -- | getGraphCompatibleList takes a list of graphs (list of node Bitvectors)
@@ -592,7 +592,7 @@ getGraphCompatibleList :: String -> [[BV.BV]] -> BV.BV-> [BV.BV]
 getGraphCompatibleList comparison inBVListList bvToCheck =
   if null inBVListList then error "Null list of list of bitvectors in getGraphCompatibleList"
   else
-    let compatibleList = concat $ parmap rdeepseq (flip (combinable comparison) bvToCheck) inBVListList
+    let compatibleList = concat (fmap (flip (combinable comparison) bvToCheck) inBVListList `using` PU.myParListChunkRDS)
     in
     -- trace (show $ length compatibleList)
     compatibleList
@@ -605,7 +605,7 @@ getCompatibleList comparison inBVListList =
   if null inBVListList then error "Null list of list of bitvectors in getCompatibleList"
   else
     let uniqueBVList = nub $ concat inBVListList
-        bvCompatibleListList = parmap rdeepseq (getGraphCompatibleList comparison inBVListList) uniqueBVList
+        bvCompatibleListList = fmap (getGraphCompatibleList comparison inBVListList) uniqueBVList `using` PU.myParListChunkRDS
     in
     --this filter for some input networks
     filter (not . null) bvCompatibleListList
@@ -625,7 +625,7 @@ getThresholdNodes comparison thresholdInt numLeaves objectListList
           | comparison == "identity" = Data.List.group $ sort (snd <$> concat objectListList)
           | otherwise = errorWithoutStackTrace("Comparison method " ++ comparison ++ " unrecognized (combinable/identity)")
         uniqueList = zip indexList (fmap head objectGroupList)
-        frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
+        frequencyList = fmap (((/ numGraphs) . fromIntegral) . length) objectGroupList `using` PU.myParListChunkRDS
         fullPairList = zip uniqueList frequencyList
         threshold = (fromIntegral thresholdInt / 100.0) :: Double
     in
@@ -645,7 +645,7 @@ getThresholdEdges thresholdInt numGraphsIn objectList
       numGraphs = fromIntegral numGraphsIn
       objectGroupList = Data.List.group $ sort objectList
       uniqueList = fmap head objectGroupList
-      frequencyList = parmap rdeepseq (((/ numGraphs) . fromIntegral) . length) objectGroupList
+      frequencyList = fmap (((/ numGraphs) . fromIntegral) . length) objectGroupList `using` PU.myParListChunkRDS
       fullPairList = zip uniqueList frequencyList
   in
   --trace ("There are " ++ (show numGraphsIn) ++ " to filter: " ++ (show uniqueList) ++ "\n" ++ (show $ fmap length objectGroupList) ++ " " ++ (show frequencyList))
@@ -681,7 +681,7 @@ verticesByPostorder inGraph leafNodes foundVertSet
     let vertexIndexList = S.toList foundVertSet
         vertexLabelList = fmap (fromJust . G.lab inGraph) vertexIndexList
         vertexList = zip vertexIndexList vertexLabelList
-        edgeList = concat $ parmap rdeepseq (verifyEdge vertexIndexList) $ G.labEdges inGraph
+        edgeList = concat (fmap (verifyEdge vertexIndexList) (G.labEdges inGraph) `using` PU.myParListChunkRDS)
     in G.mkGraph vertexList edgeList
       | otherwise =
     let firstLeaf = fst $ head leafNodes
@@ -815,28 +815,28 @@ main =
     -- Get leaf sets for each graph (dot and newick separately due to types) and then their union
     -- this to allow for missing data (leaves) in input graphs
     -- and leaves not in same order
-    let inputLeafListsDot = parmap rdeepseq  getLeafList inputGraphListDot
-    let inputLeafListsNewick = fmap nodeText2String <$> parmap rdeepseq  getLeafListNewick newickGraphList
+    let inputLeafListsDot = fmap getLeafList inputGraphListDot `using` PU.myParListChunkRDS
+    let inputLeafListsNewick = fmap nodeText2String <$> (fmap  getLeafListNewick newickGraphList `using` PU.myParListChunkRDS)
 
     let totallLeafString = foldl' union [] (fmap (fmap snd) (inputLeafListsDot ++ inputLeafListsNewick))
     let totallLeafSet = zip [0..(length totallLeafString - 1)] totallLeafString
     hPutStrLn stderr ("There are " ++ show (length totallLeafSet) ++ " unique leaves in input graphs")
 
     -- Should add check for cycles here
-    let sanityListDot = parmap rdeepseq  (checkNodesSequential  (-1)) (fmap G.nodes inputGraphListDot)
-    let sanityListNewick = parmap rdeepseq  (checkNodesSequential  (-1)) (fmap G.nodes newickGraphList)
+    let sanityListDot = fmap (checkNodesSequential  (-1)) (fmap G.nodes inputGraphListDot) `using` PU.myParListChunkRDS
+    let sanityListNewick = fmap (checkNodesSequential  (-1)) (fmap G.nodes newickGraphList) `using` PU.myParListChunkRDS
     let sanityList = sanityListDot ++ sanityListNewick
     let allOK = foldl' (&&) True sanityList
     if allOK then hPutStrLn stderr "\nInput Graphs passed sanity checks"
     else errorWithoutStackTrace ("Sanity check error(s) on input graphs (False = Failed) Non-sequential node indices: " ++ show (zip [0..(length sanityList - 1)] sanityList))
 
     -- Add in "missing" leaves from individual graphs and renumber edges
-    let fullLeafSetGraphsDot = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsDot inputGraphListDot
-    let fullLeafSetGraphsNewick = parmap rdeepseq (reIndexAndAddLeavesEdges totallLeafSet) $ zip inputLeafListsNewick (parmap rdeepseq fglTextB2Text newickGraphList)
+    let fullLeafSetGraphsDot = fmap (reIndexAndAddLeavesEdges totallLeafSet) (zip inputLeafListsDot inputGraphListDot) `using` PU.myParListChunkRDS
+    let fullLeafSetGraphsNewick = fmap (reIndexAndAddLeavesEdges totallLeafSet) (zip inputLeafListsNewick (fmap fglTextB2Text newickGraphList)) `using` PU.myParListChunkRDS
     let fullLeafSetGraphs = fullLeafSetGraphsDot ++ fullLeafSetGraphsNewick
 
     -- Reformat graphs with appropriate annotations, BV.BVs, etc
-    let processedGraphs = parmap rdeepseq reAnnotateGraphs fullLeafSetGraphs -- inputGraphList
+    let processedGraphs = fmap reAnnotateGraphs fullLeafSetGraphs `using` PU.myParListChunkRDS -- inputGraphList
 
     -- Create lists of reindexed unique nodes and edges, identity by BV.BVs
     -- The drops to not reexamine leaves repeatedly
@@ -866,7 +866,7 @@ main =
     --
     let (thresholdNodes', nodeFreqs) = getThresholdNodes compareMethod threshold numLeaves (fmap (drop numLeaves . G.labNodes) processedGraphs)
     let thresholdNodes = leafNodes ++ thresholdNodes'
-    let thresholdEdges = nub $ concat $ parmap rdeepseq (getIntersectionEdges (fmap snd thresholdNodes) thresholdNodes) thresholdNodes
+    let thresholdEdges = nub $ concat (fmap (getIntersectionEdges (fmap snd thresholdNodes) thresholdNodes) thresholdNodes `using` PU.myParListChunkRDS)
     let numPossibleEdges =  ((length thresholdNodes * length thresholdNodes) - length thresholdNodes) `div` 2
     let thresholdConsensusGraph = G.mkGraph thresholdNodes thresholdEdges -- O(n^3)
     -- let thresholdConsensusGraph = makeEUN thresholdNodes thresholdEdges (G.mkGraph thresholdNodes thresholdEdges) -- O(n^4)
