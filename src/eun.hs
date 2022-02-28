@@ -68,6 +68,26 @@ import           System.IO
 import           Debug.Trace
 
 
+
+-- | reindexGraph takes a graph and reindexes nodes and edges such that nodes 
+-- are sequential and the firt field matches their node index
+reindexGraph :: P.Gr a b -> P.Gr a b
+reindexGraph inGraph =
+    if G.isEmpty inGraph then G.empty
+    else 
+        let nodeList = G.labNodes inGraph
+            newIndexList = [0..(length nodeList - 1)]
+            nodeIndexPair = zip (fmap fst nodeList) newIndexList
+            nodeIndexMap = Map.fromList nodeIndexPair
+            newNodeList = fmap (makeNewNode nodeIndexMap) nodeList
+            newEdgeList = fmap (makeNewEdge nodeIndexMap) (G.labEdges inGraph)
+        in
+        G.mkGraph newNodeList newEdgeList
+
+    where makeNewNode indexMap (a,b) = (fromJust $ Map.lookup a indexMap, b)
+          makeNewEdge indexMap (a,b,c) = (fromJust $ Map.lookup a indexMap, fromJust $ Map.lookup b indexMap, c)
+
+
 -- | turnOnOutZeroBit turns on the bit 'nleaves" signifying that
 -- the node is outdegree 1
 -- this so outdegree one nodes and their child have differnet bit sets
@@ -880,7 +900,7 @@ main =
     -- Add urRoot and edges to existing roots if there are unconnected components and connnectComponets is True
     let labelledTresholdConsensusGraph = if not connectComponents then labelledTresholdConsensusGraph''
                                          else addUrRootAndEdges labelledTresholdConsensusGraph''
-    let gvRelabelledConsensusGraph = changeVertexEdgeLabels vertexLabel edgeLabel labelledTresholdConsensusGraph
+    let gvRelabelledConsensusGraph = reindexGraph $ changeVertexEdgeLabels vertexLabel edgeLabel labelledTresholdConsensusGraph
     let thresholdConsensusOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams gvRelabelledConsensusGraph
     let thresholdConsensusOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph labelledTresholdConsensusGraph] edgeLabel True
 
@@ -904,7 +924,7 @@ main =
                                     else addUrRootAndEdges thresholdLabelledEUNGraph''
 
     -- Create EUN Dot file
-    let gvRelabelledEUNGraph = changeVertexEdgeLabels vertexLabel edgeLabel thresholdLabelledEUNGraph
+    let gvRelabelledEUNGraph = reindexGraph $ changeVertexEdgeLabels vertexLabel edgeLabel thresholdLabelledEUNGraph
     let thresholdEUNOutDotString = T.unpack $ renderDot $ toDot $ GV.graphToDot GV.quickParams gvRelabelledEUNGraph -- eunGraph
     let thresholdEUNOutFENString = PhyP.fglList2ForestEnhancedNewickString [PhyP.stringGraph2TextGraph thresholdLabelledEUNGraph] edgeLabel True
 
