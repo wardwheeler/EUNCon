@@ -1,4 +1,4 @@
-cabal-version:  2.2
+cabal-version:  3.0
 build-type:     Simple
 
 name:           eun
@@ -12,6 +12,12 @@ version:        0.1.0.0
 --license:        BSD3
 --license-file:   LICENSE
 
+Source-Repository-Package head
+  type:     git
+  location: git@github.com:wardwheeler/PhyGraph.git
+  subdir:   pkg/PhyloLib
+
+
 -- for static linking add options -static -optl-static -optl-pthread
 
 executable euncon
@@ -22,16 +28,17 @@ executable euncon
                 -Wincomplete-patterns
                 -threaded 
                 -O2
+                -with-rtsopts=-N
                 -- for weeder
-                -fwrite-ide-info 
-                    -optl-static -optl-pthread
-                -static
+                -- -fwrite-ide-info 
+                -- -optl-static -optl-pthread
+                -- -static
                 -- for native code generation remove the line below
-                -fllvm
+                -- -fllvm
 
 -- delete these for OSX
-  cc-options: -static
-  ld-options: -static -pthread
+  -- cc-options: -static
+  -- ld-options: -static -pthread
 
   build-depends:  base >=4.10
                 , containers >=0.6
@@ -47,7 +54,7 @@ executable euncon
                 , random
                 , hashable
                 , time
-                
+                , bv-little
                 
   default-extensions : BangPatterns                
 

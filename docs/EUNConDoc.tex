@@ -115,7 +115,7 @@
 	
 	
 	\subsection{Execution in Parallel}
-	By default the program will execute using a single process core.  By specifying the options `+RTS -NX -RTS' where `X' is the number of processors offered to the program. These are specified after the program as in (for 4 parallel threads):\\
+	By default the program will execute in parallel using available processor cores.  By specifying the options `+RTS -NX -RTS' where `X' is the number of processors offered to the program this may be modified (``-N1'' will result in sequential execution).These are specified after the program as in (for 4 parallel threads):\\
 	\\
 	euncon +RTS -N4 -RTS other options...  \\
 	
