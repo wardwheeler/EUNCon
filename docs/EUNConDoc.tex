@@ -113,8 +113,54 @@
 	The program is invoked from the command-line as in:\\
 	euncon reconcile:eun threshold:0 outfile:myOutput graphFile1.dot graphFile2.tre\\
 	
+	\section{Examples}
+	Example use from files in testData. \\
+	\\
+	Sequential execution:\\
+	\texttt{euncon Whee*dot}\\
+	\\
+	 Parallel execution with 2 threads:\\
+	\texttt{euncon Whee*dot +RTS -N2}\\
+	\\
+	Both yield:
+	\begin{quote}
+		EUNCon version 0.9
+		Copyright(C) 2020 Ward Wheeler and The American Museum of Natural History
+		EUNCon comes with ABSOLUTELY NO WARRANTY; This is free software, and may be 
+		redistributed under the GNU General Public License Version 2, June 1991.
+		
+		Warning: No reconcile specified defaulting to `eun'\\
+		Warning: No compare specified defaulting to `combinable'\\
+		Warning: No threshold specified defaulting to `0'\\
+		Warning: No connect value specified defaulting to `False'\\
+		Warning: No edgeLabel value specified defaulting to `True'\\
+		Warning: No vertexLabel value specified defaulting to `False'\\
+		Warning: No output format specified defaulting to `dot'\\
+		Warning: No output file name specified defaulting to `euncon.out'\\
+		
+		Input arguments: [``Wheeler2012.0.dot",``Wheeler2012.1.dot",``Wheeler2012.2.dot",``Wheeler2012.3.dot",``Wheeler2012.4.dot"]\\
+		Program options: (``eun","combinable",0,False,True,False,``dot",``euncon.out",[``Wheeler2012.0.dot",``Wheeler2012.1.dot",``Wheeler2012.2.dot",``Wheeler2012.3.dot",``Wheeler2012.4.dot"])
+		
+		Graph combination method: eun at threshold 0
+		
+		Graphviz Files [``Wheeler2012.4.dot",``Wheeler2012.3.dot",``Wheeler2012.2.dot",``Wheeler2012.1.dot",``Wheeler2012.0.dot"]\\
+		Newick Files []\\
+		Forest Enhanced Newick Files []
+		
+		There are 5 input graphs\\
+		There are 5 unique leaves in input graphs
+		
+		Input Graphs passed sanity checks
+		
+		Input-based total Graph with 13 nodes and 20 edges
+		
+		Threshold EUN deleted 3 of 20 total edges for a final graph with 13 nodes and 17 edges
+		
+		Done
+	\end{quote}
 	
-	\subsection{Execution in Parallel}
+	
+	\section{Execution in Parallel}
 	By default the program will execute using a single process core.  By specifying the options `+RTS -NX -RTS' where `X' is the number of processors offered to the program. These are specified after the program as in (for 4 parallel threads):\\
 	\\
 	euncon +RTS -N4 -RTS other options...  \\

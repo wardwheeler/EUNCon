@@ -23,15 +23,15 @@ executable euncon
                 -threaded 
                 -O2
                 -- for weeder
-                -fwrite-ide-info 
-                    -optl-static -optl-pthread
+--                -fwrite-ide-info 
+--                    -optl-static -optl-pthread
                 -static
                 -- for native code generation remove the line below
-                -fllvm
+--                -fllvm
 
 -- delete these for OSX
-  cc-options: -static
-  ld-options: -static -pthread
+--  cc-options: -static
+--  ld-options: -static -pthread
 
   build-depends:  base >=4.10
                 , containers >=0.6
