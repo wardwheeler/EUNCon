@@ -113,6 +113,7 @@
 	The program is invoked from the command-line as in:\\
 	euncon reconcile:eun threshold:0 outfile:myOutput graphFile1.dot graphFile2.tre\\
 	
+<<<<<<< HEAD
 	\section{Examples}
 	Example use from files in testData. \\
 	\\
@@ -162,6 +163,11 @@
 	
 	\section{Execution in Parallel}
 	By default the program will execute using a single process core.  By specifying the options `+RTS -NX -RTS' where `X' is the number of processors offered to the program. These are specified after the program as in (for 4 parallel threads):\\
+=======
+	
+	\subsection{Execution in Parallel}
+	By default the program will execute in parallel using available processor cores.  By specifying the options `+RTS -NX -RTS' where `X' is the number of processors offered to the program this may be modified (``-N1'' will result in sequential execution).These are specified after the program as in (for 4 parallel threads):\\
+>>>>>>> 1eed3885af13bdabf284a81d0321142787d2d1d6
 	\\
 	euncon +RTS -N4 -RTS other options...  \\
 	

@@ -34,23 +34,30 @@ Portability :  portable (I hope)
 
 -}
 
-module GeneralUtilities where
+{-# Language BangPatterns #-}
+{-# Language ImportQualifiedPost #-}
+{-# Language ScopedTypeVariables #-}
 
-import           Data.Array
-import qualified Data.Text  as T
-import           System.Random
-import           Data.Array.IO
-import           Control.Monad
-import           Data.Hashable
-import           Data.List
-import           Data.Time
-import           Data.Time.Clock.POSIX
-import           System.IO.Unsafe
-import           Text.Read
-import           Data.Maybe
--- import           Data.Global -- won't compile perhaps ghc-9 issue
+module GeneralUtilities
+    ( module GeneralUtilities
+    ) where
 
-
+import Data.Array
+import Data.Text qualified  as T
+import Data.Text.Lazy qualified as TL
+import System.Random
+import Data.Array.IO
+import Data.Foldable
+import Control.Monad
+import Control.DeepSeq
+import Data.Time
+import Data.Time.Clock.POSIX
+import System.IO.Unsafe
+import Text.Read
+import Data.Maybe
+import Data.Bits
+import Data.BitVector.LittleEndian qualified as BV
+import Data.List qualified as L
 
 
 -- | functions for triples, quadruples
@@ -108,6 +115,13 @@ fft6 (_,_,_,_,e,_) = e
 six6 :: (a,b,c,d,e,f) -> f
 six6 (_,_,_,_,_,e) = e
 
+-- | doubleAsInt takes floor and ceil of Double and retuns Maybe Int
+-- nothing if not, Just Int if it is
+doubleAsInt :: Double -> Maybe Int
+doubleAsInt inDouble =
+    if ceiling inDouble /= floor inDouble then Nothing
+    else Just (floor inDouble :: Int)
+
 -- | editDistance is a naive edit distance between two lists
 -- takes two  lists and returns edit distance
 --- from  https://wiki.haskell.org/Edit_distance
@@ -126,6 +140,27 @@ editDistance xs ys = table ! (m,n)
     dist (i,0) = i
     dist (i,j) = minimum [table ! (i-1,j) + 1, table ! (i,j-1) + 1,
         if x ! i == y ! j then table ! (i-1,j-1) else 1 + table ! (i-1,j-1)]
+
+-- | checkCommandArgs takes comamnd and args and verifies that they are in list
+checkCommandArgs :: String -> [String] -> [String] -> Bool
+checkCommandArgs commandString commandList permittedList =
+    null commandList || (
+    let firstCommand = head commandList
+        foundCommand = firstCommand `elem` permittedList
+    in
+    if foundCommand then checkCommandArgs commandString (tail commandList) permittedList
+    else
+        let errorMatch = snd $ getBestMatch (maxBound :: Int ,"no suggestion") permittedList firstCommand
+        in  errorWithoutStackTrace $ fold
+              [ "\nError: Unrecognized '"
+              , commandString
+              , "' option. By '"
+              , firstCommand
+              , "' did you mean '"
+              , errorMatch
+              , "'?\n"
+              ] )
+
 
 -- | getBestMatch compares input to allowable commands and checks if in list and if not outputs
 -- closest match
@@ -168,8 +203,8 @@ isSequentialSubsequence firstL secondL
 -- | shuffle Randomly shuffles a list
 --   /O(N)/
 -- from https://wiki.haskell.org/Random_shuffle
-shuffle :: [a] -> IO [a]
-shuffle xs = do
+shuffleIO :: [a] -> IO [a]
+shuffleIO xs = do
         ar <- newArrayLocal  n xs
         forM [1..n] $ \i -> do
             j <- randomRIO (i,n)
@@ -182,43 +217,106 @@ shuffle xs = do
     newArrayLocal :: Int -> [a] -> IO (IOArray Int a)
     newArrayLocal  nL xsL =  newListArray (1,nL) xsL
 
+-- | shuffleInt takes a seed, number of replicates and a list of Ints and 
+-- repeately shuffles the order 
+shuffleInt :: Int -> Int -> [Int] -> [[Int]]
+shuffleInt seed numReplicates inIntList =
+    if null inIntList then []
+    else if numReplicates < 1 then []
+    else 
+        let randList = take (length inIntList) $ randomIntList seed 
+            pairList = L.sortOn fst $ zip randList inIntList
+            (_, newList) = unzip pairList
+        in
+        newList : shuffleInt (seed + 1) (numReplicates - 1) inIntList
 
 
--- | randomList generates a random list from a seed--no IO or ST monad 
--- but needs a good seed
+{-# NOINLINE randomList #-}
+-- | randomList generates an infinite random list from a seed--no IO or ST monad 
+-- but needs a good seed--perhaps system tiem
+-- can cast to to other types like :: [Int]
 randomList :: Int -> [Double]
 randomList seed = randoms (mkStdGen seed) :: [Double]
 
+{-# NOINLINE randomIntList #-}
+-- | randomIntList generates an infinite random list of Ints 
+randomIntList :: Int -> [Int]
+randomIntList seed = randoms (mkStdGen seed) :: [Int]
 
--- | selectListCostPairs is generala to list of (a, Double)
+{-# NOINLINE permuteList #-}
+-- | permuteList ranomzes list order with seed 
+permuteList :: Int -> [a] -> [a]
+permuteList rSeed inList =
+    if null inList then []
+    else if length inList == 1 then inList
+    else 
+        fst $ unzip $ L.sortOn snd $ zip inList (randomIntList rSeed)
+
+-- | takeRandom premutes a list and takes a number b ased on sed aned number to take
+takeRandom :: Int -> Int -> [a] -> [a]
+takeRandom rSeed number inList =
+    if null inList then []
+    else if number >= length inList then inList
+    else
+        L.take number $ permuteList rSeed inList
+
+-- | takeNth takes n elments (each nth) of a list of length m
+takeNth :: Int -> [a] -> [a]
+takeNth number inList =
+    if null inList then []
+    else if number == 0 then []
+    else if number == 1 then [head inList]
+    else if number >= length inList then inList
+    else 
+        let (value, _) = divMod (length inList) number
+            indexList = [0..(length inList - 1)]
+            (_, remList) = unzip $ zipWith divMod indexList (L.replicate (length inList) value) 
+            (outList, _) = unzip $ filter ((== 1) . snd) $ zip inList remList
+        in
+        take number outList
+
+-- | getRandomElement returns the nth random element uniformly
+-- at random
+getRandomElement :: Int -> [a] -> a
+getRandomElement rVal inList = 
+    if null inList then error "Null list in getRandomElement"
+    else if length inList == 1 then head inList
+    else 
+        let (_, idx) = divMod (abs rVal) (length inList)
+        in
+        inList !! idx
+
+-- | selectListCostPairs is general to list of (a, Double)
 -- but here used for graph sorting and selecting)takes a pair of graph representation (such as String or fgl graph), and
---- a Double cost and returns the whole of number of 'best', 'unique' or  'random' cost
+-- a Double cost and returns the whole of number of 'best', 'unique' or  'random' cost
 -- need an Eq function such as '==' for Strings or equal for fgl
--- optionsList must all be lower case to avoicd
 -- assumes options are all lower case
--- options are pairs of Sting and number for number or graphs to keeep, if number is set to (-1) then all are kept
+-- options are pairs of String and number for number or graphs to keeep, if number is set to (-1) then all are kept
 -- if the numToKeep to return graphs is lower than number of graphs, the "best" number are returned
 -- except for random.
-selectListCostPairs :: (Eq a, Hashable a) => (a -> a -> Bool) -> [(a, Double)] -> [String] -> Int -> [(a, Double)] 
-selectListCostPairs compFun pairList optionList numToKeep = 
+selectListCostPairs :: forall a . (a -> a -> Bool) -> [(a, Double)] -> [String] -> Int -> Int -> [(a, Double)] 
+selectListCostPairs compFun pairList optionList numToKeep seed = 
   if null optionList then error "No options specified for selectGraphCostPairs"
   else if null pairList then []
   else 
-    let firstPass = if ("unique" `elem` optionList) then nubBy compFunPair pairList
-                    else pairList
-        secondPass = if ("best" `elem` optionList) then reverse $ sortOn snd firstPass
-                     else firstPass
+    let firstPass =
+          let compFunPair :: forall b c. (a, b) -> (a, c) -> Bool
+              compFunPair x = compFun (fst x) . fst
+          in  if ("unique" `elem` optionList)
+              then L.nubBy compFunPair pairList
+              else pairList
+        secondPass
+          | ("best" `elem` optionList) = reverse $ L.sortOn snd firstPass
+          | otherwise = firstPass
     in
     if ("random" `notElem` optionList) then take numToKeep secondPass 
     else -- shuffling with hash of structure as seed (not the best but simple for here)
-      let seed = getSystemTimeSecondsUnsafe -- hash pairList
-          randList = randomList seed
+      let randList = randomList seed
           pairListWRand = zip randList secondPass
-          thirdPass = fmap snd $ sortOn fst pairListWRand
+          thirdPass = fmap snd $ L.sortOn fst pairListWRand
 
-      in
-      take numToKeep thirdPass
-  where compFunPair fGraph sGraph = compFun (fst fGraph) (fst sGraph)
+      in  take numToKeep thirdPass
+
 
 -- | getSystemTimeSeconds gets teh syste time and returns IO Int
 getSystemTimeSeconds :: IO Int
@@ -227,12 +325,26 @@ getSystemTimeSeconds = do
     let timeD = (round $ utcTimeToPOSIXSeconds systemTime) :: Int
     return timeD
 
+{-# NOINLINE getSystemTimeNDT #-}
+-- | getSystemTimeNDT gets the syste time and returns IO NominalDiffTime
+getSystemTimeNDT :: IO NominalDiffTime
+getSystemTimeNDT = do
+    systemTime <- getCurrentTime  
+    let !timeD = utcTimeToPOSIXSeconds systemTime
+    return timeD
+
+{-# NOINLINE getSystemTimeNDTUnsafe #-}
+-- | getSystemTimeNDTUnsafe gets the syste time and returns IO NominalDiffTime
+getSystemTimeNDTUnsafe :: NominalDiffTime
+getSystemTimeNDTUnsafe = unsafePerformIO getSystemTimeNDT
+
+
 {-# NOINLINE getSystemTimeSecondsUnsafe #-}
 -- | getSystemTimeSecondsUnsafe gets the system time and returns Int via unsafePerformIO
 -- without the NOINLINE the function would probbaly be comverted to a 
 -- constant which would be "safe" and OK as a random seed or if only called once
 getSystemTimeSecondsUnsafe :: Int
-getSystemTimeSecondsUnsafe = unsafePerformIO getSystemTimeSeconds
+getSystemTimeSecondsUnsafe = unsafePerformIO $ force <$> getSystemTimeSeconds
     
 -- | stringToInt converts a String to an Int
 stringToInt :: String -> String -> Int
@@ -251,3 +363,97 @@ makeIndexPairs doDiagValues numI numJ indexI indexJ =
         if doDiagValues && (indexI == indexJ) then (indexI, indexJ) : makeIndexPairs doDiagValues numI numJ indexI (indexJ + 1)
         else if (indexI < indexJ) then (indexI, indexJ) : makeIndexPairs doDiagValues numI numJ indexI (indexJ + 1)
         else makeIndexPairs doDiagValues numI numJ indexI (indexJ + 1)
+
+-- | stripString  removes leading and trailing spaces from String 
+-- akin to Text 'strip'
+stripString :: String -> String
+stripString inString = 
+    if null inString then inString
+    else 
+        let firstS = dropWhile (== ' ') inString
+            secondS = dropWhile (== ' ') $ reverse firstS
+        in
+        reverse secondS
+
+-- | replaceVal replaces first value with second value e.g.  carriage return '\r' with line newlinme '\n'
+-- call with [] accumulator
+replaceVal :: (Eq a) => a -> a -> [a] -> [a] -> [a]  
+replaceVal target replacement inList curList =
+    if null inList then reverse curList
+    else 
+        let firstVal = head inList
+        in
+        if firstVal == target then replaceVal target replacement (tail inList) (replacement : curList)
+        else replaceVal target replacement (tail inList) (firstVal : curList)
+
+
+-- | cartProd takes two lists and retuns carteian product as list of pairs
+cartProd :: [a] -> [b] -> [(a,b)]
+cartProd xs ys = [(x,y) | x <- xs, y <- ys] 
+
+
+-- | cartProdPair takes a pair of lists and retuns carteian product as list of pairs
+cartProdPair :: ([a], [b]) -> [(a,b)]
+cartProdPair (xs, ys) = [(x,y) | x <- xs, y <- ys] 
+
+
+-- | isCompatible takes a bit vector and a list of bit vectors
+-- and returns True if the fist bit vector is compatible will all in the list
+isBVCompatible :: BV.BitVector -> [BV.BitVector] -> Bool
+isBVCompatible inBV bvList =
+    if null bvList then True
+    else 
+        let firstBV = head bvList
+            bvVal = inBV .&. firstBV
+        in
+        if bvVal == inBV then isBVCompatible inBV (tail bvList)
+        else if bvVal == firstBV then isBVCompatible inBV (tail bvList)
+        else False
+
+-- | textMatchWildcards takes two Text's first may have wildcards and second without
+-- return True if they match, False otherwise.
+textMatchWildcards :: TL.Text -> TL.Text -> Bool
+textMatchWildcards straightText wildText =
+    if TL.null wildText && TL.null straightText then 
+        True
+    else if TL.null wildText then
+        False
+    else if TL.null straightText then 
+        False
+    else if ((TL.head wildText == '*') &&  ((TL.length $ TL.dropWhile (== '*') wildText ) > 0)) && (TL.null straightText) then 
+        False
+    else if (TL.head wildText == '?') || (TL.head wildText == TL.head straightText) then 
+        textMatchWildcards (TL.tail straightText) (TL.tail wildText)
+    else if (TL.head wildText == '*') then 
+        (textMatchWildcards (TL.tail straightText) wildText) || (textMatchWildcards straightText (TL.tail wildText))
+    else 
+        False
+
+-- | elemWildards checks if a Text matches (without wildcards) at least one element of a List of Wildcard Text
+elemWildcards :: TL.Text -> [TL.Text] -> Bool
+elemWildcards straightText wildTextList =
+    if null wildTextList then False
+    else 
+        if textMatchWildcards straightText (head wildTextList) then True
+        else elemWildcards straightText (tail wildTextList)
+    
+
+-- | notElemWildcards checks if a Text matches (without wildcards) no elements of a List of Wildcard Text
+notElemWildcards :: TL.Text -> [TL.Text] -> Bool
+notElemWildcards straightText wildTextList =
+    if null wildTextList then True
+    else 
+        if textMatchWildcards straightText (head wildTextList) then False
+        else notElemWildcards straightText (tail wildTextList)
+        
+-- | getListPairs takes a list and returns all unique pairs of elements
+-- order is (first found in list, second found in list)
+getListPairs :: [a] -> [(a,a)]
+getListPairs inList =
+    if null inList then []
+    else
+        let firstElem = head inList
+            firstPairs = zip (replicate (length $ tail inList) firstElem) (tail inList)
+        in
+        firstPairs ++ (getListPairs (tail inList)) 
+
