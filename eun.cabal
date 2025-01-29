@@ -35,6 +35,7 @@ executable euncon
 --  ld-options: -static -pthread
 
   build-depends:  base >=4.10
+                , bv-little
                 , containers >=0.6
                 , graphviz
                 , fgl
